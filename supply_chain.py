@@ -1,4 +1,6 @@
+from typing import Sequence
 import numpy as np
+
 
 class SupplyChain: 
     """ 
@@ -12,7 +14,7 @@ class SupplyChain:
         p: int = 2,
         k: int = 3,
         gamma: float = 0.9,
-        b: float = 2.5,
+        b: float = 0.0,
         m: int = 5,
     ) -> None:
         """
@@ -28,6 +30,7 @@ class SupplyChain:
             S: Current state of the environment. Amount of goods in stock.
             b: Extra weight for outcomes m and m+1 (0.0 = uniform distribution).
             m: Which value to make more likely. Must be in [0, n-1].
+            dt: Current market ask (pertubations), gets updated each step.
         """
         self.n = n
         self.h = h
@@ -39,19 +42,20 @@ class SupplyChain:
         self.b = b
         assert 0 <= m < n ,"m must be in [0, n-1]"
         self.m = m
+        self.dt: int = 0
 
-    def cost(self, s: int, a: int, dt: int) -> float:
+    def reward(self, s: int, a: int) -> float:
         """
-        Calculates the cost a time t 
+        Calculates the reward a time t 
         """
         cost = self.k if a > 0 else 0 
-        holding_cost = self.h*(s + a - dt) 
-        lost_sales_cost = self.p*(dt - s - a) 
+        holding_cost = self.h*(s + a - self.dt) 
+        lost_sales_cost = self.p*(self.dt - s - a) 
 
         cost += holding_cost if holding_cost > 0 else 0
         cost += lost_sales_cost if lost_sales_cost > 0 else 0
 
-        return cost*np.power(self.gamma, self.t)
+        return -cost*np.power(self.gamma, self.t)
 
     def pertubed_distribution(self) -> int: 
         """
@@ -66,28 +70,47 @@ class SupplyChain:
         return np.random.choice(np.arange(self.n + 1),  p=probs)
 
 
-    def step(self, a: int) -> tuple[int, float]: 
+    def step(self, a: int, verbose: bool = False) -> tuple[int, float]: 
         """
         Takes a step in the environment given an action. 
         """
-        print(f"{a} items are ordered")
-        dt = self.pertubed_distribution() 
-        print(f"{dt} goods are requested by the market")
-        cost = self.cost(self.S, a, dt) 
-        print(f"The cost is {cost}")
-        self.S = self.S + a - dt 
+        self.dt = self.pertubed_distribution() 
+        reward = self.reward(self.S, a)
+        self.S = self.S + a - self.dt 
         if self.S < 0: 
             self.S = 0 
-        print(f"New state is {self.S}")
         self.t += 1 
-        return (self.S, cost)
+        if verbose:
+            print(f"{a} items are ordered")
+            print(f"{self.dt} goods are requested by the market")
+            print(f"The reward is {reward}")
+            print(f"New state is {self.S}")
+        return (self.S, reward)
 
-    def action_space(self) -> int: 
+    def legal_actions(self) -> int: 
         """
         Returns all legal actions as size of action space. The agent cannot 
         posses more than n goods at any time, i.e. more than self.n - self.S
         """
-        return self.n - self.S  
+        return self.n - self.S
+
+    def state_space(self) -> Sequence[int]:
+        return range(self.n)
+
+    def action_space(self) -> Sequence[int]:
+        return range(self.legal_actions())
+
+    def action_size(self) -> int:
+        """
+        Size of the action space (total num possible actions)
+        """
+        return self.n
+
+    def state_size(self) -> int:
+        """
+        Size of the state space (total num possible states)
+        """
+        return self.n
 
     def reset(self) -> None: 
         """
@@ -105,4 +128,4 @@ def random_action(env: SupplyChain):
 if __name__ == "__main__": 
     env = SupplyChain() 
     for i in range(5): 
-        env.step(random_action(env))
+        env.step(random_action(env), True)
