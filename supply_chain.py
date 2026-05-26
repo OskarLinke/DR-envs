@@ -1,4 +1,6 @@
 import numpy as np
+from numpy.typing import NDArray
+from typing import Any
 
 
 class SupplyChain: 
@@ -112,6 +114,29 @@ class SupplyChain:
         self.t = 0 
         self.S = s 
 
+    def true_nominal_model(self) -> NDArray[Any]: 
+        if self.b != 0: 
+            raise NotImplementedError
+        P_0 = np.zeros((self.state_size(), self.action_size(), self.state_size())) 
+        for s in range(self.state_size()): 
+            for a in range(self.action_size()): 
+                if s + a > self.n: 
+                    continue
+                for s_ in range(self.state_size()): 
+                    if s_ > s + a: 
+                        P_0[s, a, s_] = 0 
+                    elif 0 < s_ <= s + a: 
+                        P_0[s, a, s_] = 1/(self.n + 1) 
+                    elif s_ == 0: 
+                        P_0[s, a, s_] = 1-((s+a)/(self.n+1))
+                if np.sum(P_0[s,a])!=1: 
+                    print(s) 
+                    print(a) 
+                    print(P_0[s,a])
+                    break
+        return P_0
+
+
 
 if __name__ == "__main__": 
     def random_action(env: SupplyChain): 
@@ -121,5 +146,5 @@ if __name__ == "__main__":
         return np.random.randint(env.legal_actions())
 
     env = SupplyChain() 
-    for i in range(5): 
-        env.step(random_action(env), True)
+    print(f"True nominal model of the system: {env.true_nominal_model()[:3]}")
+    
