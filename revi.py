@@ -9,12 +9,14 @@ def empirical_nominal_kernel(env, N: int = 1000):
     P_hat = np.zeros((S, A, S))
     for s in range(S):
         for a in range(A):
+            env.reset(s = s)
+            if a > env.legal_actions():
+                continue
             for _ in range(N):
-                env.S = s
-                if a > env.legal_actions():
-                    break
-                s_prime, _ = env.step(a)
+                env.reset(s = s)
+                s_prime, r = env.step(a)
                 running_counts[s_prime] += 1 
+
             running_counts /= N
             P_hat[s, a] = running_counts
             running_counts.fill(0)
@@ -22,7 +24,9 @@ def empirical_nominal_kernel(env, N: int = 1000):
     return P_hat
 
 def robust_bellman_operator(inf_P, V, r_val, gamma):
-    pass
+    return r_val + gamma*np.dot(inf_P, V)
+
+    
 
 def find_inf_P(P_hat, V, sigma, dist_metric: str = "TV"):
     """
@@ -69,9 +73,11 @@ def find_inf_P(P_hat, V, sigma, dist_metric: str = "TV"):
 def REVI(env, P_hat, sigma: float, K: int, distance_metric: str = "TV"):
     """
     Robust Empirical Value Iteration
+
     NOTE
     ----
-        Assumes tabular learning, thus states and actions are given as indices
+        Assumes tabular learning, thus states and actions are given as indices. 
+        Assumes deterministic rewards. 
     """
 
     # Init Q_0 and V_0
@@ -83,16 +89,19 @@ def REVI(env, P_hat, sigma: float, K: int, distance_metric: str = "TV"):
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
     for k in range(K):
-        for s in env.state_space:
-            max_a = 0
-            for a in env.action_space:
-                r_val = env.reward(s, a)
+        for s in range(env.state_size()):
+            for a in range(env.action_size()):
+                env.reset(s = s)
+                if a > env.legal_actions(): 
+                    Q_k[s, a] = -np.inf
+                    continue
                 inf_P = find_inf_P(
                     P_hat[s, a], V_k, sigma, dist_metric=distance_metric
                 ) # find_inf_P needs to be tested and debugged
-                Q_k[s, a] = robust_bellman_operator(inf_P, V_k, r_val, gamma) # fill args
-                V_k = np.max(Q_k, axis=1) # Maybe baby
-            
+
+                r_val = env.reward(s, a)
+                Q_k[s, a] = robust_bellman_operator(inf_P, V_k, r_val, gamma)
+        V_k = np.max(Q_k, axis=1)             
 
     # return Q_K and V_K
     return Q_k, V_k
@@ -106,12 +115,9 @@ if __name__ == "__main__":
     uncertainty_lvl = 0.5
     max_iter = 100
     P_hat = empirical_nominal_kernel(nominal_env, N=1000)
-    breakpoint()
-    print("P_hat:\n", P_hat)
-
 
     # Run REVI with uniform as nominal transition
-    # Q_K, V_K = REVI(nominal_env, P_hat, uncertainty_lvl, max_iter)
-    # print("Q_K:", Q_K)
-    # print()
-    # print("V_K:", V_K)
+    Q_K, V_K = REVI(nominal_env, P_hat, uncertainty_lvl, max_iter)
+    print("Q_K:", Q_K)
+    print()
+    print("V_K:", V_K)
