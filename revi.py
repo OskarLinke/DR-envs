@@ -33,20 +33,32 @@ def find_inf_P(P_hat, V, sigma, dist_metric: str = "TV"):
     def objective(p_):
         return np.dot(p_, V)
 
-    def ineq_constraint(p_):  # distance metric
+    def distance_constraint(p_):  # distance metric
         if dist_metric == "TV":
             return sigma - np.max(np.abs(p_ - P_hat))  # change norm type here
         else:
             raise ValueError("Implemented distance metrics are: TV")
 
-    def eq_constrain(p_): 
+    def sum_constraint(p_): 
         return 1 - np.sum(p_)
+   
+    def value_constraint_lower(p_):
+        return np.min(p_)
+
+    def value_constraint_upper(p_): 
+        return 1 - np.max(p_)
+
+    constraints = [
+        {"type": "ineq", "fun": distance_constraint}, 
+        {"type": "eq", "fun": sum_constraint}, 
+        {"type": "ineq", "fun": value_constraint_upper}, 
+        {"type": "ineq", "fun": value_constraint_lower}, 
+    ]
 
     result = minimize(
       objective,
       x0=P_hat,
-      constraints=[{"type": "ineq", "fun": ineq_constraint},
-                   {"type": "eq", "fun": eq_constrain}],
+      constraints= constraints, 
       method="SLSQP",
     )
     return result.x
