@@ -11,6 +11,8 @@ def empirical_nominal_kernel(env, N: int = 1000):
         for a in range(A):
             for _ in range(N):
                 env.S = s
+                if a > env.legal_actions():
+                    break
                 s_prime, _ = env.step(a)
                 running_counts[s_prime] += 1 
             running_counts /= N
@@ -88,10 +90,12 @@ if __name__ == "__main__":
     uncertainty_lvl = 0.5
     max_iter = 100
     P_hat = empirical_nominal_kernel(nominal_env, N=1000)
+    breakpoint()
+    print("P_hat:\n", P_hat)
 
 
     # Run REVI with uniform as nominal transition
-    Q_K, V_K = REVI(nominal_env, P_hat, uncertainty_lvl, max_iter)
-    print("Q_K:", Q_K)
-    print()
-    print("V_K:", V_K)
+    # Q_K, V_K = REVI(nominal_env, P_hat, uncertainty_lvl, max_iter)
+    # print("Q_K:", Q_K)
+    # print()
+    # print("V_K:", V_K)

@@ -1,4 +1,3 @@
-from typing import Sequence
 import numpy as np
 
 
@@ -94,36 +93,30 @@ class SupplyChain:
         """
         return self.n - self.S
 
-    def state_space(self) -> Sequence[int]:
-        return range(self.n)
-
-    def action_space(self) -> Sequence[int]:
-        return range(self.legal_actions())
-
     def action_size(self) -> int:
         """
         Size of the action space (total num possible actions)
         """
-        return self.n
+        return self.n + 1
 
     def state_size(self) -> int:
         """
         Size of the state space (total num possible states)
         """
-        return self.n
+        return self.n + 1
 
-    def reset(self) -> None: 
+    def reset(self, s: int = 0) -> None: 
         """
         Resets the environment. 
         """
         self.t = 0 
-        self.S = 0 
+        self.S = s 
 
 def random_action(env: SupplyChain): 
     """
     Takes a random action from the set of allowed actions. 
     """
-    return np.random.randint(env.action_space())
+    return np.random.randint(env.legal_actions())
 
 if __name__ == "__main__": 
     env = SupplyChain() 
