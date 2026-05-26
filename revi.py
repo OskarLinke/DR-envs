@@ -33,17 +33,21 @@ def find_inf_P(P_hat, V, sigma, dist_metric: str = "TV"):
     def objective(p_):
         return np.dot(p_, V)
 
-    def constraint(p_):  # distance metric
+    def ineq_constraint(p_):  # distance metric
         if dist_metric == "TV":
             return sigma - np.max(np.abs(p_ - P_hat))  # change norm type here
         else:
             raise ValueError("Implemented distance metrics are: TV")
 
+    def eq_constrain(p_): 
+        return 1 - np.sum(p_)
+
     result = minimize(
       objective,
       x0=P_hat,
-      constraints={"type": "ineq", "fun": constraint},
-      method="CG"
+      constraints=[{"type": "ineq", "fun": ineq_constraint},
+                   {"type": "eq", "fun": eq_constrain}],
+      method="SLSQP",
     )
     return result.x
 
@@ -87,11 +91,16 @@ if __name__ == "__main__":
     nominal_env = SupplyChain(b=0) # With b=0 uniform
     uncertainty_lvl = 0.5
     max_iter = 100
-    P_hat = empirical_nominal_kernel(nominal_env, N=1000)
+    #P_hat = empirical_nominal_kernel(nominal_env, N=1000)
 
 
     # Run REVI with uniform as nominal transition
-    Q_K, V_K = REVI(nominal_env, P_hat, uncertainty_lvl, max_iter)
-    print("Q_K:", Q_K)
-    print()
-    print("V_K:", V_K)
+    #Q_K, V_K = REVI(nominal_env, P_hat, uncertainty_lvl, max_iter)
+    #print("Q_K:", Q_K)
+    #print()
+    #print("V_K:", V_K)
+    p_hat = np.array([0,0.2,0.8]) 
+    V = np.array([0,1,2]) 
+    sigma = 0.5 
+
+    print(find_inf_P(p_hat, V, sigma))
