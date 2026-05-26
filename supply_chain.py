@@ -112,13 +112,14 @@ class SupplyChain:
         self.t = 0 
         self.S = s 
 
-def random_action(env: SupplyChain): 
-    """
-    Takes a random action from the set of allowed actions. 
-    """
-    return np.random.randint(env.legal_actions())
 
 if __name__ == "__main__": 
+    def random_action(env: SupplyChain): 
+        """
+        Takes a random action from the set of allowed actions. 
+        """
+        return np.random.randint(env.legal_actions())
+
     env = SupplyChain() 
     for i in range(5): 
         env.step(random_action(env), True)
