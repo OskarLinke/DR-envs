@@ -4,6 +4,7 @@ import numpy as np
 from numpy.typing import NDArray
 from utils import (
     bellman_operator,
+    find_inf_market_dist,
     find_inf_P,
     robust_bellman_operator,
 )
@@ -11,7 +12,7 @@ from utils import (
 QAndValueFunctions: TypeAlias = tuple[NDArray[Any], NDArray[Any]]
 
 def REVI(
-    env, P_hat, sigma: float, K: int, distance_metric: str = "TV"
+    env, md_nom, sigma: float, K: int, distance_metric: str = "KL", tolerance = 0.05
 ) -> QAndValueFunctions:
     """
     Robust Empirical Value Iteration
@@ -31,19 +32,29 @@ def REVI(
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
     for k in range(K):
+        Q_prev = Q_k.copy()
         for s in range(env.state_size()):
             for a in range(env.action_size()):
                 env.reset(s = s)
                 if a > env.legal_actions(): 
                     Q_k[s, a] = -np.inf
                     continue
-                inf_P = find_inf_P(
-                    P_hat[s, a], V_k, sigma, dist_metric=distance_metric
-                )
 
-                r_val = env.reward(s, a)
-                Q_k[s, a] = robust_bellman_operator(inf_P, V_k, r_val, gamma)
-        V_k = np.max(Q_k, axis=1)             
+                inf_md = find_inf_market_dist(s, a, md_nom, 
+                                              env.expected_reward_sa, env.trans_prob_kernel_sa, 
+                                              V_k, gamma, sigma, distance_metric)  
+                
+                inf_P = env.trans_prob_kernel_sa(s, a, inf_md) 
+                inf_r = env.expected_reward_sa(s, a, inf_md)
+                Q_k[s, a] = robust_bellman_operator(inf_P, V_k, inf_r, gamma)
+
+        V_k = np.max(Q_k, axis=1)
+
+        mask = np.isfinite(Q_k) & np.isfinite(Q_prev) #We can't subtract np.inf values
+        if np.linalg.norm(Q_k[mask] - Q_prev[mask], ord = np.inf) < tolerance: 
+            print(f"REVI terminated at step {k}") 
+            break
+
 
     # return Q_K and V_K
     return Q_k, V_k
@@ -84,23 +95,25 @@ def VI(
 
 if __name__ == "__main__":
     from supply_chain import SupplyChain
-    from utils import empirical_nominal_kernel
 
     ### SupplyChain
     nominal_env = SupplyChain(b=0) # With b=0 uniform
-    uncertainty_lvl = 0.1
-    max_iter = 100
+    uncertainty_lvl = 1
+    max_iter = 400
+    
+    nom_md = nominal_env.market_ask_distribution()
+
 
     # Run REVI with uniform as nominal transition
-    # Q_K, V_K = REVI(nominal_env, P_hat, uncertainty_lvl, max_iter)
-    # P_hat = empirical_nominal_kernel(nominal_env, N=1000)
-    # print("Q_K:", Q_K)
-    # print()
-    # print("V_K:", V_K)
+    Q_K, V_K = REVI(nominal_env, nom_md, uncertainty_lvl, max_iter)
+    print("Q_K:", Q_K)
+    print("V_K:", V_K)
+    print("Pi:\n", np.argmax(Q_K, axis=1))
+
 
     # Run VI with uniform market ask on true nominal transition and exp R
     P = nominal_env.true_nominal_kernel()
-    R_exp = nominal_env.expected_reward()
+    R_exp = nominal_env.nominal_expected_reward()
     Q_K, V_K = VI(nominal_env, P, R_exp, max_iter)
     print("Q_K:\n", Q_K)
     print()

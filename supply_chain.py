@@ -58,24 +58,30 @@ class SupplyChain:
 
         return -cost*np.power(self.gamma, self.t)
 
-    def pertubed_distribution(self) -> int:
+
+    def market_ask(self) -> int:
         """
         The amount of goods requested by the market. A perturbed normal
         distribution. When b = 0, it is a regular uniform distribution. 
         """
+        probs = self.market_ask_distribution()        
+        return np.random.choice(np.arange(self.n + 1),  p=probs)
+
+    def market_ask_distribution(self) -> NDArray[Any]:
+        """
+        The distribution of market ask probabilities
+        """
         fill_val = (self.n - 1 - 2*self.b)/(np.square(self.n) - 1)
         probs = np.full(self.n + 1, fill_val)
         probs[self.m] = (self.b + 1)/(self.n + 1)
-        probs[self.m + 1] = probs[self.m] 
-        
-        return np.random.choice(np.arange(self.n + 1),  p=probs)
-
+        probs[self.m + 1] = probs[self.m]
+        return probs
 
     def step(self, a: int, verbose: bool = False) -> tuple[int, float]: 
         """
         Takes a step in the environment given an action. 
         """
-        self.dt = self.pertubed_distribution() 
+        self.dt = self.market_ask() 
         reward = self.reward(self.S, a)
         self.S = self.S + a - self.dt 
         if self.S < 0: 
@@ -114,16 +120,11 @@ class SupplyChain:
         self.t = 0 
         self.S = s 
 
-    def expected_reward(self) -> NDArray[Any]:
+    def nominal_expected_reward(self) -> NDArray[Any]:
         """
         Get the expected reward for each state and action.
         Only implemented for uniform market ask (b=0)
         """
-        if self.b != 0: 
-            raise NotImplementedError(
-                "True nominal kernel only implemented for uniform market ask"
-                f"i.e. b=0 not b={self.b}"
-            )
         R_exp = np.zeros((self.state_size(), self.action_size()))
         for s in range(self.state_size()):
             for a in range(self.action_size()):
@@ -134,6 +135,31 @@ class SupplyChain:
 
         self.reset()
         return R_exp
+
+    def expected_reward_sa(self, s: int, a: int, market_ask_dist: NDArray[Any]) -> float:
+        """ 
+        Get the expected reward for a single state-action pair 
+        given some market ask distribution 
+        """
+        exp_r = 0
+        for n in range(self.n + 1): 
+            self.dt = n 
+            exp_r += self.reward(s, a) * market_ask_dist[n]
+        
+        self.reset() 
+        return exp_r
+
+    def trans_prob_kernel_sa(self, s: int, a: int, market_ask_dist: NDArray[Any]) -> NDArray[Any]: 
+        if s + a > self.n: 
+            raise ValueError("Illegal action taken. s + a must be less than self.n")
+
+        P_ = np.zeros(self.state_size())
+        for dt in range(self.n + 1):
+            s_ = s + a - dt 
+            if s_ < 0:
+                s_ = 0
+            P_[s_] += market_ask_dist[dt]
+        return P_
 
     def true_nominal_kernel(self) -> NDArray[Any]: 
         """
@@ -168,5 +194,7 @@ if __name__ == "__main__":
         """
         return np.random.randint(env.legal_actions())
 
-    env = SupplyChain()
-    print(f"expected reward:\n{env.expected_reward()}")
+    env = SupplyChain(m = 5, b = 2)
+    
+    market_dist = env.market_ask_distribution()
+    print(f"Transition probability function from s = 0, a = 1: {env.trans_prob_kernel_sa(0, 1, market_dist)}")
