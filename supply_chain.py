@@ -47,18 +47,18 @@ class SupplyChain:
 
     def reward(self, s: int, a: int) -> float:
         """
-        Calculates the reward a time t 
+        Calculates the reward a time t
         """
-        cost = self.k if a > 0 else 0 
-        holding_cost = self.h*(s + a - self.dt) 
-        lost_sales_cost = self.p*(self.dt - s - a) 
+        cost = self.k if a > 0 else 0
+        holding_cost = self.h*(s + a - self.dt)
+        lost_sales_cost = self.p*(self.dt - s - a)
 
         cost += holding_cost if holding_cost > 0 else 0
         cost += lost_sales_cost if lost_sales_cost > 0 else 0
 
         return -cost*np.power(self.gamma, self.t)
 
-    def pertubed_distribution(self) -> int: 
+    def pertubed_distribution(self) -> int:
         """
         The amount of goods requested by the market. A perturbed normal
         distribution. When b = 0, it is a regular uniform distribution. 
@@ -114,9 +114,37 @@ class SupplyChain:
         self.t = 0 
         self.S = s 
 
-    def true_nominal_model(self) -> NDArray[Any]: 
+    def expected_reward(self) -> NDArray[Any]:
+        """
+        Get the expected reward for each state and action.
+        Only implemented for uniform market ask (b=0)
+        """
         if self.b != 0: 
-            raise NotImplementedError
+            raise NotImplementedError(
+                "True nominal kernel only implemented for uniform market ask"
+                f"i.e. b=0 not b={self.b}"
+            )
+        R_exp = np.zeros((self.state_size(), self.action_size()))
+        for s in range(self.state_size()):
+            for a in range(self.action_size()):
+                for n in range(self.n + 1):
+                    self.dt = n
+                    R_exp[s, a] += self.reward(s, a)
+        R_exp /= (self.n + 1)
+
+        self.reset()
+        return R_exp
+
+    def true_nominal_kernel(self) -> NDArray[Any]: 
+        """
+        Get the true nominal kernel for each state and action.
+        Only implemented for uniform market ask (b=0)
+        """
+        if self.b != 0: 
+            raise NotImplementedError(
+                "True nominal kernel only implemented for uniform market ask"
+                f"i.e. b=0 not b={self.b}"
+            )
         P_0 = np.zeros((self.state_size(), self.action_size(), self.state_size())) 
         for s in range(self.state_size()): 
             for a in range(self.action_size()): 
@@ -126,14 +154,9 @@ class SupplyChain:
                     if s_ > s + a: 
                         P_0[s, a, s_] = 0 
                     elif 0 < s_ <= s + a: 
-                        P_0[s, a, s_] = 1/(self.n + 1) 
+                        P_0[s, a, s_] = 1 / (self.n + 1) 
                     elif s_ == 0: 
-                        P_0[s, a, s_] = 1-((s+a)/(self.n+1))
-                if np.sum(P_0[s,a])!=1: 
-                    print(s) 
-                    print(a) 
-                    print(P_0[s,a])
-                    break
+                        P_0[s, a, s_] = 1 - ((s + a) / (self.n + 1))
         return P_0
 
 
@@ -145,6 +168,5 @@ if __name__ == "__main__":
         """
         return np.random.randint(env.legal_actions())
 
-    env = SupplyChain() 
-    print(f"True nominal model of the system: {env.true_nominal_model()[:3]}")
-    
+    env = SupplyChain()
+    print(f"expected reward:\n{env.expected_reward()}")
