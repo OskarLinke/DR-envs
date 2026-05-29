@@ -5,14 +5,13 @@ from numpy.typing import NDArray
 from utils import (
     bellman_operator,
     find_inf_market_dist,
-    find_inf_P,
     robust_bellman_operator,
 )
 
 QAndValueFunctions: TypeAlias = tuple[NDArray[Any], NDArray[Any]]
 
 def REVI(
-    env, md_nom, sigma: float, K: int, distance_metric: str = "KL", tolerance = 0.05
+    env, md_nom, sigma: float, K: int, dist_metric: str = "KL", tolerance = 0.05
 ) -> QAndValueFunctions:
     """
     Robust Empirical Value Iteration
@@ -33,16 +32,20 @@ def REVI(
     # update both Q_k and V_k
     for k in range(K):
         Q_prev = Q_k.copy()
-        for s in range(env.state_size()):
-            for a in range(env.action_size()):
+        for s in range(S):
+            for a in range(A):
                 env.reset(s = s)
                 if a > env.legal_actions(): 
                     Q_k[s, a] = -np.inf
                     continue
 
-                inf_md = find_inf_market_dist(s, a, md_nom, 
-                                              env.expected_reward_sa, env.trans_prob_kernel_sa, 
-                                              V_k, gamma, sigma, distance_metric)  
+                inf_md = find_inf_market_dist(
+                    state=s, action=a, nom_md=md_nom,
+                    V=V_k, gamma=gamma, sigma=sigma, 
+                    dist_metric=dist_metric,
+                    exp_rw_func=env.expected_reward_sa,
+                    trans_kernel_func=env.trans_prob_kernel_sa,
+                )
                 
                 inf_P = env.trans_prob_kernel_sa(s, a, inf_md) 
                 inf_r = env.expected_reward_sa(s, a, inf_md)
@@ -50,11 +53,10 @@ def REVI(
 
         V_k = np.max(Q_k, axis=1)
 
-        mask = np.isfinite(Q_k) & np.isfinite(Q_prev) #We can't subtract np.inf values
+        mask = np.isfinite(Q_k) & np.isfinite(Q_prev) # We can't subtract np.inf values
         if np.linalg.norm(Q_k[mask] - Q_prev[mask], ord = np.inf) < tolerance: 
             print(f"REVI terminated at step {k}") 
             break
-
 
     # return Q_K and V_K
     return Q_k, V_k

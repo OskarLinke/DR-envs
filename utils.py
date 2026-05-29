@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
+from typing import Any, Callable
 from scipy.optimize import minimize
-from typing import Any
 
 def empirical_nominal_kernel(env, N: int = 1000):
     # Estimate the nominal model for Supply Chain
@@ -33,18 +33,19 @@ def bellman_operator(P, V, r_val, gamma):
     return r_val + gamma*np.dot(P, V)
 
 def find_inf_market_dist(
-        s: int, 
-        a: int, 
-        nom_md: NDArray[Any], 
-        exp_rw_func, 
-        trans_kernel_func, 
-        V: NDArray[Any], 
-        gamma: float,
-        sigma: float,
-        dist_metric: str = "KL"): 
+    state: int, 
+    action: int, 
+    nom_md: NDArray[Any], 
+    V: NDArray[Any], 
+    gamma: float,
+    sigma: float,
+    exp_rw_func: Callable[[int, int, NDArray[Any]], float],
+    trans_kernel_func: Callable[[int, int, NDArray[Any]], NDArray[Any]],
+    dist_metric: str = "KL",
+) -> NDArray[Any]: 
     """
-    s is the state
-    a is the action
+    state is state
+    action is action
     nom_md is the nomrinal market ask distribution (md = market distribution) 
     exp_rw_func is a function which given a market distribution and state-action
         pair gives an expected reward 
@@ -58,17 +59,17 @@ def find_inf_market_dist(
 
     # Nominal transition kernel induced by the nominal market distribution.
     # The ambiguity ball is defined on the transition kernel, not on md_.
-    nom_P = trans_kernel_func(s, a, nom_md)
+    nom_P = trans_kernel_func(state, action, nom_md)
 
     def objective(md_):
-        r_val = exp_rw_func(s, a, md_)
-        p_ = trans_kernel_func(s, a, md_)
+        r_val = exp_rw_func(state, action, md_)
+        p_ = trans_kernel_func(state, action, md_)
         return r_val + gamma*np.dot(p_, V)
 
     def distance_constraint(md_):
         # Distance is measured between the induced transition kernel P_ and the
         # nominal kernel nom_P, not between md_ and nom_md.
-        p_ = trans_kernel_func(s, a, md_)
+        p_ = trans_kernel_func(state, action, md_)
         if dist_metric == "L2":
             return sigma - np.sqrt(np.sum(np.square(p_ - nom_P)))
         elif dist_metric == "KL":
@@ -87,15 +88,16 @@ def find_inf_market_dist(
     ]
 
     result = minimize(
-      objective,
-      x0=nom_md,
-      constraints= constraints,
-      bounds=[(0, 1) for _ in range(len(nom_md))],
-      method="SLSQP",
-      options = {'maxiter': 500}, 
+        objective,
+        x0=nom_md,
+        constraints= constraints,
+        bounds=[(0, 1) for _ in range(len(nom_md))],
+        method="SLSQP", # TODO: Think on this together
+        options = {"maxiter": 500}, # TODO: Why this??
     )
     if not result.success:
         print(f"Warning: find_inf_market_dist optimization failed: {result.message}")
+
     # Clamp to [0,1] to handle numerical errors
     return result.x
 
@@ -134,5 +136,6 @@ def find_inf_P(P_hat, V, sigma, dist_metric: str = "TV"):
     )
     if not result.success:
         print(f"Warning: find_inf_P optimization failed: {result.message}")
+
     # Clamp to [0,1] to handle numerical errors
     return result.x
