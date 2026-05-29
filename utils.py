@@ -56,18 +56,27 @@ def find_inf_market_dist(
     dist_metric is the distance metric
     """ 
 
-    def objective(md_): 
-        r_val = exp_rw_func(s, a, md_) 
-        p_ = trans_kernel_func(s, a, md_) 
-        return r_val + gamma*np.dot(p_, V) 
+    # Nominal transition kernel induced by the nominal market distribution.
+    # The ambiguity ball is defined on the transition kernel, not on md_.
+    nom_P = trans_kernel_func(s, a, nom_md)
 
-    def distance_constraint(md_): 
-        if dist_metric == "L2": 
-            return sigma - np.sqrt(np.sum(np.square(md_ - nom_md))) 
-        elif dist_metric == "KL": 
-            return sigma - np.sum(md_ * np.log(md_ / nom_md + 1e-12))
-        else: 
-            raise NotImplementedError("Implemented distance metrics include: L2, KL") 
+    def objective(md_):
+        r_val = exp_rw_func(s, a, md_)
+        p_ = trans_kernel_func(s, a, md_)
+        return r_val + gamma*np.dot(p_, V)
+
+    def distance_constraint(md_):
+        # Distance is measured between the induced transition kernel P_ and the
+        # nominal kernel nom_P, not between md_ and nom_md.
+        p_ = trans_kernel_func(s, a, md_)
+        if dist_metric == "L2":
+            return sigma - np.sqrt(np.sum(np.square(p_ - nom_P)))
+        elif dist_metric == "KL":
+            # KL(P_ || nom_P). p_*log(p_/nom_P) -> 0 where p_ == 0.
+            kl = np.sum(p_ * np.log((p_ + 1e-12) / (nom_P + 1e-12)))
+            return sigma - kl
+        else:
+            raise NotImplementedError("Implemented distance metrics include: L2, KL")
 
     def sum_constraint(md_): 
         return 1.0 - np.sum(md_) 
