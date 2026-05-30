@@ -28,27 +28,30 @@ def REVI(
     Q_k = np.zeros((S, A))
     V_k = np.zeros(S)
 
+    # Precompute linear maps once. P(s,a,md) = M[s,a] @ md and
+    # E_md[r(s,a)] = r_vec[s,a] @ md. Independent of V_k, so built
+    # outside the Bellman loop.
+    M, r_vec = env.linear_maps()
+
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
     for k in range(K):
         Q_prev = Q_k.copy()
         for s in range(S):
             for a in range(A):
-                env.reset(s = s)
-                if a > env.legal_actions(): 
+                if s + a > env.n:
                     Q_k[s, a] = -np.inf
                     continue
 
                 inf_md = find_inf_market_dist(
-                    state=s, action=a, nom_md=md_nom,
-                    V=V_k, gamma=gamma, sigma=sigma, 
+                    nom_md=md_nom,
+                    V=V_k, gamma=gamma, sigma=sigma,
+                    M_sa=M[s, a], r_sa=r_vec[s, a],
                     dist_metric=dist_metric,
-                    exp_rw_func=env.expected_reward_sa,
-                    trans_kernel_func=env.trans_prob_kernel_sa,
                 )
-                
-                inf_P = env.trans_prob_kernel_sa(s, a, inf_md) 
-                inf_r = env.expected_reward_sa(s, a, inf_md)
+
+                inf_P = M[s, a] @ inf_md
+                inf_r = r_vec[s, a] @ inf_md
                 Q_k[s, a] = robust_bellman_operator(inf_P, V_k, inf_r, gamma)
 
         V_k = np.max(Q_k, axis=1)

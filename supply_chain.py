@@ -58,6 +58,18 @@ class SupplyChain:
 
         return -cost*np.power(self.gamma, self.t)
 
+    def _reward_pure(self, s: int, a: int, dt: int) -> float:
+        """
+        Pure reward function: no dependence on self.dt or self.t.
+        Used by linear_maps() to precompute reward coefficients.
+        """
+        cost = self.k if a > 0 else 0
+        holding_cost = self.h * (s + a - dt)
+        lost_sales_cost = self.p * (dt - s - a)
+        cost += holding_cost if holding_cost > 0 else 0
+        cost += lost_sales_cost if lost_sales_cost > 0 else 0
+        return -cost
+
 
     def market_ask(self) -> int:
         """
@@ -166,7 +178,37 @@ class SupplyChain:
             P_[s_] += market_ask_dist[dt]
         return P_
 
-    def true_nominal_kernel(self) -> NDArray[Any]: 
+    def linear_maps(self) -> tuple[NDArray[Any], NDArray[Any]]:
+        """
+        Precompute the linear maps from market-ask distribution md to
+        (transition probability, expected reward) for every (s, a).
+
+        Returns
+        -------
+        M : ndarray of shape (S, A, S, n+1)
+            M[s, a] is a (S, n+1) matrix such that P(s, a, md) = M[s, a] @ md.
+        r_vec : ndarray of shape (S, A, n+1)
+            r_vec[s, a] is a length-(n+1) vector such that
+            E_md[reward(s, a)] = r_vec[s, a] @ md.
+
+        For illegal (s+a > n), entries are left at zero. Callers must
+        guard against these.
+        """
+        S = self.state_size()
+        A = self.action_size()
+        M = np.zeros((S, A, S, self.n + 1))
+        r_vec = np.zeros((S, A, self.n + 1))
+        for s in range(S):
+            for a in range(A):
+                if s + a > self.n:
+                    continue
+                for dt in range(self.n + 1):
+                    sp = s + a - dt if s + a - dt > 0 else 0
+                    M[s, a, sp, dt] += 1.0
+                    r_vec[s, a, dt] = self._reward_pure(s, a, dt)
+        return M, r_vec
+
+    def true_nominal_kernel(self) -> NDArray[Any]:
         """
         Get the true nominal kernel for each state and action.
         Only implemented for uniform market ask (b=0)

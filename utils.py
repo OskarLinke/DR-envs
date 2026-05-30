@@ -33,43 +33,47 @@ def bellman_operator(P, V, r_val, gamma):
     return r_val + gamma*np.dot(P, V)
 
 def find_inf_market_dist(
-    state: int, 
-    action: int, 
-    nom_md: NDArray[Any], 
-    V: NDArray[Any], 
+    nom_md: NDArray[Any],
+    V: NDArray[Any],
     gamma: float,
     sigma: float,
-    exp_rw_func: Callable[[int, int, NDArray[Any]], float],
-    trans_kernel_func: Callable[[int, int, NDArray[Any]], NDArray[Any]],
+    M_sa: NDArray[Any],
+    r_sa: NDArray[Any],
     dist_metric: str = "KL",
-) -> NDArray[Any]: 
+) -> NDArray[Any]:
     """
-    state is state
-    action is action
-    nom_md is the nomrinal market ask distribution (md = market distribution) 
-    exp_rw_func is a function which given a market distribution and state-action
-        pair gives an expected reward 
-    trans_kernel_func is a function which takes a market distribution and state-action
-        pair, and returns a transition probability vector 
-    V is the value-fucntion 
-    gamma is the discount factor
-    sigma is the robustness level
-    dist_metric is the distance metric
-    """ 
+    Find the adversarial market-ask distribution for one (s, a).
 
-    # Nominal transition kernel induced by the nominal market distribution.
-    # The ambiguity ball is defined on the transition kernel, not on md_.
-    nom_P = trans_kernel_func(state, action, nom_md)
+    Uses precomputed linear maps so that P(s, a, md) = M_sa @ md and
+    E_md[r(s, a)] = r_sa @ md. The objective is then linear in md:
+
+        objective(md) = (r_sa + gamma * M_sa.T @ V) @ md
+
+    Parameters
+    ----------
+    nom_md : (n+1,) nominal market-ask distribution. Used as warm start
+        and to compute nom_P for the ambiguity ball.
+    V : (S,) current value function.
+    gamma : discount factor.
+    sigma : ambiguity ball radius.
+    M_sa : (S, n+1) linear map md -> transition probability vector.
+    r_sa : (n+1,) linear map md -> expected reward.
+    dist_metric : "KL" or "L2". Distance is measured between the induced
+        transition kernel and nom_P, not between md and nom_md.
+    """
+
+    nom_P = M_sa @ nom_md
+    # Constant coefficient vector: objective(md) = c @ md.
+    c = r_sa + gamma * (M_sa.T @ V)
 
     def objective(md_):
-        r_val = exp_rw_func(state, action, md_)
-        p_ = trans_kernel_func(state, action, md_)
-        return r_val + gamma*np.dot(p_, V)
+        return c @ md_
+
+    def objective_jac(md_):
+        return c
 
     def distance_constraint(md_):
-        # Distance is measured between the induced transition kernel P_ and the
-        # nominal kernel nom_P, not between md_ and nom_md.
-        p_ = trans_kernel_func(state, action, md_)
+        p_ = M_sa @ md_
         if dist_metric == "L2":
             return sigma - np.sqrt(np.sum(np.square(p_ - nom_P)))
         elif dist_metric == "KL":
@@ -79,26 +83,26 @@ def find_inf_market_dist(
         else:
             raise NotImplementedError("Implemented distance metrics include: L2, KL")
 
-    def sum_constraint(md_): 
-        return 1.0 - np.sum(md_) 
+    def sum_constraint(md_):
+        return 1.0 - np.sum(md_)
 
     constraints = [
-        {"type": "ineq", "fun": distance_constraint}, 
-        {"type": "eq", "fun": sum_constraint}, 
+        {"type": "ineq", "fun": distance_constraint},
+        {"type": "eq", "fun": sum_constraint},
     ]
 
     result = minimize(
         objective,
         x0=nom_md,
-        constraints= constraints,
+        jac=objective_jac,
+        constraints=constraints,
         bounds=[(0, 1) for _ in range(len(nom_md))],
-        method="SLSQP", # TODO: Think on this together
-        options = {"maxiter": 500}, # TODO: Why this??
+        method="SLSQP",
+        options={"maxiter": 500},
     )
     if not result.success:
         print(f"Warning: find_inf_market_dist optimization failed: {result.message}")
 
-    # Clamp to [0,1] to handle numerical errors
     return result.x
 
 
