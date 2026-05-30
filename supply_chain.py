@@ -71,10 +71,11 @@ class SupplyChain:
         """
         The distribution of market ask probabilities
         """
-        fill_val = (self.n - 1 - 2*self.b)/(np.square(self.n) - 1)
-        probs = np.full(self.n + 1, fill_val)
-        probs[self.m] = (self.b + 1)/(self.n + 1)
+        fill_val = (self.n - 1 - 2*self.b)/(np.square(self.n) - 1)  # (n-1-2b)/(sqr(n)-1)
+        probs = np.full(self.n + 1, fill_val)                       # n+1 long vector
+        probs[self.m] = (self.b + 1)/(self.n + 1)                   # at m and m + 1 get higher prob
         probs[self.m + 1] = probs[self.m]
+        # TODO: Shouldn't the two m indices be + 1? We have n+1 elements.
         return probs
 
     def step(self, a: int, verbose: bool = False) -> tuple[int, float]: 
@@ -136,26 +137,30 @@ class SupplyChain:
         self.reset()
         return R_exp
 
-    def expected_reward_sa(self, s: int, a: int, market_ask_dist: NDArray[Any]) -> float:
+    def expected_reward_sa(
+        self, s: int, a: int, market_ask_dist: NDArray[Any]
+    ) -> float:
         """ 
         Get the expected reward for a single state-action pair 
         given some market ask distribution 
         """
         exp_r = 0
-        for n in range(self.n + 1): 
-            self.dt = n 
+        for n in range(self.n + 1):
+            self.dt = n
             exp_r += self.reward(s, a) * market_ask_dist[n]
-        
-        self.reset() 
+
+        self.reset() # TODO: What about the reset state here? s=s?
         return exp_r
 
-    def trans_prob_kernel_sa(self, s: int, a: int, market_ask_dist: NDArray[Any]) -> NDArray[Any]: 
-        if s + a > self.n: 
+    def trans_prob_kernel_sa(
+        self, s: int, a: int, market_ask_dist: NDArray[Any]
+    ) -> NDArray[Any]:
+        if s + a > self.n:
             raise ValueError("Illegal action taken. s + a must be less than self.n")
 
         P_ = np.zeros(self.state_size())
         for dt in range(self.n + 1):
-            s_ = s + a - dt 
+            s_ = s + a - dt
             if s_ < 0:
                 s_ = 0
             P_[s_] += market_ask_dist[dt]
