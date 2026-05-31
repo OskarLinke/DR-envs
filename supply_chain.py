@@ -2,7 +2,6 @@ import numpy as np
 from numpy.typing import NDArray
 from typing import Any
 
-
 class SupplyChain: 
     """ 
     Class of the supply chain environment. Described in Liu et al (2022):
@@ -231,6 +230,7 @@ class SupplyChain:
                     elif s_ == 0: 
                         P_0[s, a, s_] = 1 - ((s + a) / (self.n + 1))
         return P_0
+
 
 
 

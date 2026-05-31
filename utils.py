@@ -77,8 +77,17 @@ def find_inf_market_dist(
         if dist_metric == "L2":
             return sigma - np.sqrt(np.sum(np.square(p_ - nom_P)))
         elif dist_metric == "KL":
-            # KL(P_ || nom_P). p_*log(p_/nom_P) -> 0 where p_ == 0.
-            kl = np.sum(p_ * np.log((p_ + 1e-12) / (nom_P + 1e-12)))
+            # KL(P_ || nom_P). True KL is +inf when p_[i] > 0 but
+            # nom_P[i] == 0 (support violation). SLSQP cannot consume
+            # np.inf in a constraint, so return a large finite penalty
+            # to push the iterate back into the feasible region.
+            mask = p_ > 0
+            if np.any(nom_P[mask] <= 0):
+                kl = 1e6
+            else:
+                kl = np.sum(
+                    p_[mask] * np.log(p_[mask] / np.maximum(nom_P[mask], 1e-12))
+                )
             return sigma - kl
         else:
             raise NotImplementedError("Implemented distance metrics include: L2, KL")
