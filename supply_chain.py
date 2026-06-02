@@ -78,12 +78,13 @@ class SupplyChain:
         # TODO: Shouldn't the two m indices be + 1? We have n+1 elements.
         return probs
 
+
     def step(self, a: int, verbose: bool = False) -> tuple[int, float]: 
         """
         Takes a step in the environment given an action. 
         """
         self.dt = self.market_ask() 
-        reward = self.reward(self.S, a) * np.power(self.gamma, self.t)
+        reward = (self.gamma**self.t) * self.reward(self.S, a)
         self.S = self.S + a - self.dt 
         if self.S < 0: 
             self.S = 0 
