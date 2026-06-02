@@ -56,7 +56,7 @@ class SupplyChain:
         cost += holding_cost if holding_cost > 0 else 0
         cost += lost_sales_cost if lost_sales_cost > 0 else 0
 
-        return -cost*np.power(self.gamma, self.t)
+        return -cost
 
 
     def market_ask(self) -> int:
@@ -83,7 +83,7 @@ class SupplyChain:
         Takes a step in the environment given an action. 
         """
         self.dt = self.market_ask() 
-        reward = self.reward(self.S, a)
+        reward = self.reward(self.S, a) * np.power(self.gamma, self.t)
         self.S = self.S + a - self.dt 
         if self.S < 0: 
             self.S = 0 
