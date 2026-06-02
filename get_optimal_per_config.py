@@ -47,4 +47,6 @@ all_configs_df = pl.DataFrame(rows[0])
 for row in rows[1:]:
     all_configs_df = all_configs_df.extend(pl.DataFrame(row))
 
+# Ensure data folder exists
+DATA_FOLDER.mkdir(parents=False, exist_ok=True)
 all_configs_df.write_parquet(DATA_FOLDER / "all_configs.parquet")
