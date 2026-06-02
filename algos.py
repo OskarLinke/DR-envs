@@ -1,4 +1,10 @@
-from my_typing import QAndValueFunctions
+from my_typing import (
+    DistancesToOptimum,
+    QFunction,
+    VFunction,
+)
+from typing import Any
+from numpy.typing import NDArray
 import numpy as np
 from utils import (
     bellman_operator,
@@ -7,8 +13,14 @@ from utils import (
 
 
 def REVI(
-    env, md_nom, sigma: float, K: int, dist_metric: str = "KL", tolerance = 0.05
-) -> QAndValueFunctions:
+    env,
+    md_nom,
+    sigma: float,
+    K: int, 
+    V_star: NDArray[Any] | None = None,
+    dist_metric: str = "KL",
+    tolerance: float = 0.05, 
+) -> tuple[QFunction, VFunction, DistancesToOptimum | None]:
     """
     Robust Empirical Value Iteration
 
@@ -23,6 +35,8 @@ def REVI(
     gamma = env.gamma
     Q_k = np.zeros((S, A))
     V_k = np.zeros(S)
+    V_dist_to_star = np.zeros(K) if V_star is not None else None
+    
 
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
@@ -48,18 +62,22 @@ def REVI(
                 Q_k[s, a] = bellman_operator(inf_P, V_k, inf_r, gamma)
 
         V_k = np.max(Q_k, axis=1)
+        if V_dist_to_star is not None:
+            V_dist_to_star[k] = np.linalg.norm(V_k - V_star)
 
         mask = np.isfinite(Q_k) & np.isfinite(Q_prev) # We can't subtract np.inf values
         if np.linalg.norm(Q_k[mask] - Q_prev[mask], ord = np.inf) < tolerance: 
+            if V_dist_to_star is not None:
+                V_dist_to_star = V_dist_to_star[:k+1]
             print(f"REVI terminated at step {k}") 
             break
 
-    # return Q_K and V_K
-    return Q_k, V_k
+    # return Q_K, V_K, and Distance to Optimum per k arrays
+    return Q_k, V_k, V_dist_to_star
 
 def VI(
     env, P, R_exp, K: int
-) -> QAndValueFunctions:
+) -> tuple[QFunction, VFunction]:
     """
     Value Iteration
 
@@ -90,30 +108,3 @@ def VI(
 
     # return Q_K and V_K
     return Q_k, V_k
-
-if __name__ == "__main__":
-    from supply_chain import SupplyChain
-
-    ### SupplyChain
-    nominal_env = SupplyChain(b=0) # With b=0 uniform
-    uncertainty_lvl = 1
-    max_iter = 400
-    
-    nom_md = nominal_env.market_ask_distribution()
-
-
-    # Run REVI with uniform as nominal transition
-    Q_K, V_K = REVI(nominal_env, nom_md, uncertainty_lvl, max_iter)
-    print("Q_K:", Q_K)
-    print("V_K:", V_K)
-    print("Pi:\n", np.argmax(Q_K, axis=1))
-
-
-    # Run VI with uniform market ask on true nominal transition and exp R
-    P = nominal_env.nominal_kernel()
-    R_exp = nominal_env.nominal_expected_reward()
-    Q_K, V_K = VI(nominal_env, P, R_exp, max_iter)
-    print("Q_K:\n", Q_K)
-    print()
-    print("V_K:\n", V_K)
-    print("Pi:\n", np.argmax(Q_K, axis=1))
