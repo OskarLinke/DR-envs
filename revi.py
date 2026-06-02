@@ -1,14 +1,10 @@
-from typing import Any
-from typing import TypeAlias
+from my_typing import QAndValueFunctions
 import numpy as np
-from numpy.typing import NDArray
 from utils import (
     bellman_operator,
     find_inf_market_dist,
-    robust_bellman_operator,
 )
 
-QAndValueFunctions: TypeAlias = tuple[NDArray[Any], NDArray[Any]]
 
 def REVI(
     env, md_nom, sigma: float, K: int, dist_metric: str = "KL", tolerance = 0.05
@@ -41,15 +37,15 @@ def REVI(
 
                 inf_md = find_inf_market_dist(
                     state=s, action=a, nom_md=md_nom,
-                    V=V_k, gamma=gamma, sigma=sigma, 
-                    dist_metric=dist_metric,
-                    exp_rw_func=env.expected_reward_sa,
-                    trans_kernel_func=env.trans_prob_kernel_sa,
+                    sigma_p=sigma, sigma_r=sigma,
+                    V=V_k, gamma=gamma,
+                    env=env, dist_metric=dist_metric,
                 )
                 
-                inf_P = env.trans_prob_kernel_sa(s, a, inf_md) 
+                inf_P = env.transition_kernel_sa(s, a, inf_md) 
                 inf_r = env.expected_reward_sa(s, a, inf_md)
-                Q_k[s, a] = robust_bellman_operator(inf_P, V_k, inf_r, gamma)
+                # Bellman operator becomes robust with inf (p,r)
+                Q_k[s, a] = bellman_operator(inf_P, V_k, inf_r, gamma)
 
         V_k = np.max(Q_k, axis=1)
 
@@ -114,7 +110,7 @@ if __name__ == "__main__":
 
 
     # Run VI with uniform market ask on true nominal transition and exp R
-    P = nominal_env.true_nominal_kernel()
+    P = nominal_env.nominal_kernel()
     R_exp = nominal_env.nominal_expected_reward()
     Q_K, V_K = VI(nominal_env, P, R_exp, max_iter)
     print("Q_K:\n", Q_K)
