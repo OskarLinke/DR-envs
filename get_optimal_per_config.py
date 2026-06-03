@@ -8,6 +8,7 @@ from const import (
     DISTANCE_METRICS,
     MAX_ITER_K,
     DATA_FOLDER,
+    STAR_SAVE_NAME
 )
 
 nominal_env = SupplyChain(b=0)
@@ -56,6 +57,6 @@ for row in rows[1:]:
 
 # Ensure data folder exists
 DATA_FOLDER.mkdir(parents=False, exist_ok=True)
-all_configs_df.write_parquet(DATA_FOLDER / "all_configs.parquet") 
+all_configs_df.write_parquet(DATA_FOLDER / STAR_SAVE_NAME) 
 
 print(f"Finished! Entire run took {time.time() - start_time} seconds") 
