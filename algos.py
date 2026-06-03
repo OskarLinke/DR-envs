@@ -20,7 +20,7 @@ def REVI(
     V_star: NDArray[Any] | None = None,
     dist_metric: str = "KL",
     tolerance: float = 0.05, 
-) -> tuple[QFunction, VFunction, DistancesToOptimum | None]:
+) -> tuple[QFunction, VFunction, DistancesToOptimum | None, int]:
     """
     Robust Empirical Value Iteration
 
@@ -36,11 +36,13 @@ def REVI(
     Q_k = np.zeros((S, A))
     V_k = np.zeros(S)
     V_dist_to_star = np.zeros(K) if V_star is not None else None
-    
+    evaluations = K  
 
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
     for k in range(K):
+        if (k + 1) % 50 == 0: 
+            print(f"Iteration {k} of setup with sigma: {sigma} and distance_metric {dist_metric}")
         Q_prev = Q_k.copy()
         for s in range(S):
             for a in range(A):
@@ -70,14 +72,15 @@ def REVI(
             if V_dist_to_star is not None:
                 V_dist_to_star = V_dist_to_star[:k+1]
             print(f"REVI terminated at step {k}") 
+            evaluations = k
             break
 
     # return Q_K, V_K, and Distance to Optimum per k arrays
-    return Q_k, V_k, V_dist_to_star
+    return Q_k, V_k, V_dist_to_star, evaluations
 
 def VI(
-    env, P, R_exp, K: int
-) -> tuple[QFunction, VFunction]:
+    env, P, R_exp, K: int, tolerance: float = 0.05
+) -> tuple[QFunction, VFunction, int]:
     """
     Value Iteration
 
@@ -92,10 +95,11 @@ def VI(
     gamma = env.gamma
     Q_k = np.zeros((S, A))
     V_k = np.zeros(S)
-
+    evaluations = K
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
     for k in range(K):
+        Q_prev = Q_k.copy()
         for s in range(env.state_size()):
             for a in range(env.action_size()):
                 env.reset(s = s)
@@ -104,7 +108,14 @@ def VI(
                     continue
                 r_val = R_exp[s, a]
                 Q_k[s, a] = bellman_operator(P[s,a], V_k, r_val, gamma)
-        V_k = np.max(Q_k, axis=1)             
+        V_k = np.max(Q_k, axis=1)  
+
+        mask = np.isfinite(Q_k) & np.isfinite(Q_prev) # We can't subtract np.inf values
+
+        if np.linalg.norm(Q_k[mask] - Q_prev[mask], ord = np.inf) < tolerance: 
+            print(f"VI terminated at step {k}") 
+            evaluations = k
+            break
 
     # return Q_K and V_K
-    return Q_k, V_k
+    return Q_k, V_k, evaluations

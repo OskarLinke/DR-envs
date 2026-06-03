@@ -5,7 +5,7 @@ from scipy.optimize import minimize
 
 from my_typing import ProbVector
 
-MAX_OPTIM_ITER = 150
+MAX_OPTIM_ITER = 1000
 
 def bellman_operator(P, V, r_val, gamma):
     return r_val + gamma*np.dot(P, V)
@@ -101,18 +101,18 @@ def find_inf_market_dist(
         return 1.0 - np.sum(md_) 
 
     constraints = [
-        {"type": "ineq", "fun": p_distance_constraint}, 
+    {"type": "ineq", "fun": p_distance_constraint}, 
         {"type": "ineq", "fun": r_distance_constraint}, 
         {"type": "eq", "fun": sum_constraint}, 
-    ]
+        ]
 
     result = minimize(
         objective,
         x0=nom_md,
         constraints= constraints,
         bounds=[(0, 1) for _ in range(len(nom_md))],
-        method="SLSQP", # TODO: Think on this together
-        options = {"maxiter": MAX_OPTIM_ITER},
+        method="SLSQP",
+        options = {"maxiter": MAX_OPTIM_ITER, "ftol": 1e-8},
     )
     if not result.success:
         print(f"Warning: find_inf_market_dist optimization failed: {result.message}")
