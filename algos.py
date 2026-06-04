@@ -36,12 +36,17 @@ def REVI(
     Q_k = np.zeros((S, A))
     V_k = np.zeros(S)
     V_dist_to_star = np.zeros(K) if V_star is not None else None
-    evaluations = K  
+    evaluations = K
+
+    # Precompute linear maps once. All three (P, expected r, reward
+    # distribution) are linear in md, so they are matrix-vector products
+    # against md. Built once, independent of V_k.
+    M, r_vec, R_map = env.linear_maps()
 
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
     for k in range(K):
-        if (k + 1) % 50 == 0: 
+        if (k + 1) % 50 == 0:
             print(
                 f"Iteration {k} of setup with sigma: {sigma} and "
                 f"distance_metric {dist_metric}"
@@ -49,20 +54,20 @@ def REVI(
         Q_prev = Q_k.copy()
         for s in range(S):
             for a in range(A):
-                env.reset(s = s)
-                if a > env.legal_actions(): 
+                if s + a > env.n:
                     Q_k[s, a] = -np.inf
                     continue
 
                 inf_md = find_inf_market_dist(
-                    state=s, action=a, nom_md=md_nom,
+                    nom_md=md_nom,
                     sigma_p=sigma, sigma_r=sigma,
                     V=V_k, gamma=gamma,
-                    env=env, dist_metric=dist_metric,
+                    M_sa=M[s, a], r_sa=r_vec[s, a], R_sa=R_map[s, a],
+                    dist_metric=dist_metric,
                 )
-                
-                inf_P = env.transition_kernel_sa(s, a, inf_md) 
-                inf_r = env.expected_reward_sa(s, a, inf_md)
+
+                inf_P = M[s, a] @ inf_md
+                inf_r = r_vec[s, a] @ inf_md
                 # Bellman operator becomes robust with inf (p,r)
                 Q_k[s, a] = bellman_operator(inf_P, V_k, inf_r, gamma)
 

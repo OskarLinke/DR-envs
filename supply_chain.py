@@ -240,26 +240,34 @@ class SupplyChain:
 
         return r_probs
 
-    def linear_maps(self) -> tuple[NDArray[Any], NDArray[Any]]:
+    def linear_maps(self) -> tuple[NDArray[Any], NDArray[Any], NDArray[Any]]:
         """
         Precompute the linear maps from market-ask distribution md to
-        (transition probability, expected reward) for every (s, a).
+        (transition probability, expected reward, reward distribution)
+        for every (s, a). All three quantities are linear in md, so each
+        can be written as a single matrix-vector product against md.
 
         Returns
         -------
         M : ndarray of shape (S, A, S, n+1)
-            M[s, a] is a (S, n+1) matrix such that P(s, a, md) = M[s, a] @ md.
+            M[s, a] @ md = transition probability vector P(s, a, md).
         r_vec : ndarray of shape (S, A, n+1)
-            r_vec[s, a] is a length-(n+1) vector such that
-            E_md[reward(s, a)] = r_vec[s, a] @ md.
+            r_vec[s, a] @ md = expected reward E_md[r(s, a)].
+        R_map : ndarray of shape (S, A, R, n+1)
+            R_map[s, a] @ md = probability distribution over reward
+            magnitudes. Bin i holds the probability of reward value -i.
+            R = self._find_num_possible_rewards() is the global upper
+            bound on |r|.
 
         For illegal (s+a > n), entries are left at zero. Callers must
         guard against these.
         """
         S = self.state_size()
         A = self.action_size()
+        R = self._find_num_possible_rewards()
         M = np.zeros((S, A, S, self.n + 1))
         r_vec = np.zeros((S, A, self.n + 1))
+        R_map = np.zeros((S, A, R, self.n + 1))
         old_dt = self.dt
         for s in range(S):
             for a in range(A):
@@ -268,11 +276,13 @@ class SupplyChain:
                 for dt in range(self.n + 1):
                     sp = s + a - dt if s + a - dt > 0 else 0
                     M[s, a, sp, dt] += 1.0
-                    self.dt = dt # set this to get correct reward
-                    r_vec[s, a, dt] = self.reward(s, a)
+                    self.dt = dt
+                    r_val = self.reward(s, a)         # non-positive int
+                    r_vec[s, a, dt] = r_val
+                    R_map[s, a, -r_val, dt] += 1.0    # bin index = |r_val|
         self.dt = old_dt
 
-        return M, r_vec
+        return M, r_vec, R_map
 
 
 if __name__ == "__main__": 
