@@ -7,3 +7,4 @@ NUM_EXPERIMENTS: int = 10
 
 DATA_FOLDER = Path(__name__).parent / "data"
 STAR_SAVE_NAME = "all_configs.parquet"
+CONVERGENCE_SAVE_NAME = "convergence_results.parquet"

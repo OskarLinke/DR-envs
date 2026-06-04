@@ -42,7 +42,10 @@ def REVI(
     # update both Q_k and V_k
     for k in range(K):
         if (k + 1) % 50 == 0: 
-            print(f"Iteration {k} of setup with sigma: {sigma} and distance_metric {dist_metric}")
+            print(
+                f"Iteration {k} of setup with sigma: {sigma} and "
+                f"distance_metric {dist_metric}"
+            )
         Q_prev = Q_k.copy()
         for s in range(S):
             for a in range(A):
