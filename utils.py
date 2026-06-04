@@ -5,7 +5,7 @@ from scipy.optimize import minimize
 
 from my_typing import ProbVector
 
-MAX_OPTIM_ITER = 1000
+MAX_OPTIM_ITER = 150
 
 def bellman_operator(P, V, r_val, gamma):
     return r_val + gamma*np.dot(P, V)
