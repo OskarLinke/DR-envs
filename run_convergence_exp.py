@@ -37,7 +37,7 @@ for metric in DISTANCE_METRICS:
             results.append(V_dists) # FIGURE OUT WHAT"S BEST
         rows.append({
             "config": config_name, 
-            "results": [results]
+            "convergence": [results]
             })
 
 # Build one DataFrame per row and extend
