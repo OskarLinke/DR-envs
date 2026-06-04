@@ -67,6 +67,7 @@ def find_inf_market_dist(
     def objective(md_):
         r_val = env.expected_reward_sa(state, action, md_)
         p_ = env.transition_kernel_sa(state, action, md_)
+
         return r_val + gamma*np.dot(p_, V)
 
     def r_distance_constraint(md_):
@@ -118,4 +119,87 @@ def find_inf_market_dist(
         print(f"Warning: find_inf_market_dist optimization failed: {result.message}")
 
     # Clamp to [0,1] to handle numerical errors
+    return result.x
+
+
+def better_find_inf_market_dist(
+    nom_md: NDArray[Any],
+    V: NDArray[Any],
+    gamma: float,
+    sigma: float,
+    M_sa: NDArray[Any],
+    r_sa: NDArray[Any],
+    dist_metric: str = "KL",
+) -> NDArray[Any]:
+    """
+    Find the adversarial market-ask distribution for one (s, a).
+
+    Uses precomputed linear maps so that P(s, a, md) = M_sa @ md and
+    E_md[r(s, a)] = r_sa @ md. The objective is then linear in md:
+
+        objective(md) = (r_sa + gamma * M_sa.T @ V) @ md
+
+    Parameters
+    ----------
+    nom_md : (n+1,) nominal market-ask distribution. Used as warm start
+        and to compute nom_P for the ambiguity ball.
+    V : (S,) current value function.
+    gamma : discount factor.
+    sigma : ambiguity ball radius.
+    M_sa : (S, n+1) linear map md -> transition probability vector.
+    r_sa : (n+1,) linear map md -> expected reward.
+    dist_metric : "KL" or "L2". Distance is measured between the induced
+        transition kernel and nom_P, not between md and nom_md.
+    """
+
+    nom_P = M_sa @ nom_md
+    # Constant coefficient vector: objective(md) = c @ md.
+    c = r_sa + gamma * (M_sa.T @ V)
+
+    def objective(md_):
+        return c @ md_
+
+    def objective_jac(md_):
+        return c
+
+    def distance_constraint(md_):
+        p_ = M_sa @ md_
+        if dist_metric == "L2":
+            return sigma - np.sqrt(np.sum(np.square(p_ - nom_P)))
+        elif dist_metric == "KL":
+            # KL(P_ || nom_P). True KL is +inf when p_[i] > 0 but
+            # nom_P[i] == 0 (support violation). SLSQP cannot consume
+            # np.inf in a constraint, so return a large finite penalty
+            # to push the iterate back into the feasible region.
+            mask = p_ > 0
+            if np.any(nom_P[mask] <= 0):
+                kl = 1e6
+            else:
+                kl = np.sum(
+                    p_[mask] * np.log(p_[mask] / np.maximum(nom_P[mask], 1e-12))
+                )
+            return sigma - kl
+        else:
+            raise NotImplementedError("Implemented distance metrics include: L2, KL")
+
+    def sum_constraint(md_):
+        return 1.0 - np.sum(md_)
+
+    constraints = [
+        {"type": "ineq", "fun": distance_constraint},
+        {"type": "eq", "fun": sum_constraint},
+    ]
+
+    result = minimize(
+        objective,
+        x0=nom_md,
+        jac=objective_jac,
+        constraints=constraints,
+        bounds=[(0, 1) for _ in range(len(nom_md))],
+        method="SLSQP",
+        options={"maxiter": 500},
+    )
+    if not result.success:
+        print(f"Warning: find_inf_market_dist optimization failed: {result.message}")
+
     return result.x

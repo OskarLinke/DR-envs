@@ -1,5 +1,7 @@
+from numpy.typing import NDArray
 from my_typing import DistancesToOptimum
 import polars as pl
+import numpy as np
 from algos import REVI
 from supply_chain import SupplyChain
 from const import(
@@ -28,9 +30,9 @@ rows: list[dict] = [] # FIGURE OUT WHAT'S BEST
 for metric in DISTANCE_METRICS:
     for sigma in SIGMAS:
         config_name = metric + "_" + str(sigma)
-        breakpoint()
-        V_robust_star = data["config" == config_name]["V_star"][0].to_numpy()
-        results: list[DistancesToOptimum] = []
+        row = data.row(by_predicate=pl.col("config") == config_name, named=True)
+        V_robust_star = np.array(row["V_star"])
+        results = []
         for n in range(NUM_EXPERIMENTS):
             Q_K, V_K, V_dists, _ = REVI(
                 env=nominal_env, md_nom=nom_md, sigma=sigma,
@@ -38,15 +40,15 @@ for metric in DISTANCE_METRICS:
             )
             assert V_dists is not None, "Must enter valid V_star to REVI"
             results.append(V_dists)
+        results = np.array(results)
         rows.append({
             "config": config_name, 
             "convergence": results,
+            "mean": np.mean(results),
+            "std": np.std(results),
             })
 
-# Build one DataFrame per row and extend
-all_configs_df = pl.DataFrame({})
-for row in rows:
-    all_configs_df = all_configs_df.extend(pl.DataFrame(row))
+all_configs_df = pl.DataFrame(rows)
 
 # Ensure data folder exists
 DATA_FOLDER.mkdir(parents=False, exist_ok=True)
