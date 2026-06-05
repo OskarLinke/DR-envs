@@ -80,7 +80,7 @@ DATA_FOLDER.mkdir(parents=False, exist_ok=True)
 
 
 if all_exps_df is not None:
-    all_exps_df.sort(by="config")
+    all_exps_df = all_exps_df.sort(by="config")
     all_exps_df.write_parquet(conv_save_path)
     print(f"Finished! Entire run took {time() - start_time:.2f} seconds") 
 
