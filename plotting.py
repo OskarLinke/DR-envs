@@ -14,7 +14,6 @@ def plot_convergence(
     labels = convergence_df["config"].str.replace(f"{dist_metric}_", r"$\sigma=$").to_list()
     means = convergence_df["means"].to_list()
     num_plots = len(labels)
-    breakpoint()
     for i in range(num_plots):
         x = range(len(means[i]))
         plt.plot(x, means[i], label=labels[i])
