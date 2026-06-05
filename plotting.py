@@ -47,12 +47,12 @@ def plot_robustness(
         else:
             label = matches["config"].str.replace("_", " ").str.join(" & ").item()
         x = range(len(row["mean_cost"]))
-        plt.scatter(x, row["mean_cost"], label=label)
         # TODO: Discuss between errors and not erros.
-        # plt.errorbar(x, row["mean_cost"], yerr=row["std_cost"], label=label, fmt="o", capsize=3, alpha=0.6)
-        # Do std above and below with fill between
+        # plt.scatter(x, row["mean_cost"], label=label)
+        # plt.scatter(x, row["mean_cost"], label=label, alpha=0.6) # fix colors
+        plt.errorbar(x, row["mean_cost"], yerr=row["std_cost"], label=label, fmt="o", capsize=3, alpha=0.6)
         # import numpy as np
-        # plt.fill_between(
+        # plt.fill_between( # fix colors
         #     x,
         #     np.array(row["mean_cost"]) - np.array(row["std_cost"]),
         #     np.array(row["mean_cost"]) + np.array(row["std_cost"]),
