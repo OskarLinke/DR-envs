@@ -1,6 +1,5 @@
 import numpy as np
 import polars as pl
-from algos import REVI, VI
 from supply_chain import SupplyChain
 from tqdm import tqdm
 from const import (

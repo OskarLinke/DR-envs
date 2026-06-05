@@ -1,9 +1,7 @@
 import matplotlib.pyplot as plt
 from pathlib import Path
 import polars as pl
-import numpy as np
 
-from const import DISTANCE_METRICS
 
 def plot_convergence(
     convergence_df: pl.DataFrame,
@@ -36,19 +34,39 @@ def plot_convergence(
 def plot_robustness(
     robustness_df: pl.DataFrame,
     solved_df: pl.DataFrame,
-    save_path: Path
+    b: float,
+    save_path: Path,
+    y_lim: tuple[float, float] | None = None,
 ) -> None:
     # Get list of policy per config
-    for row in robustness_df.iter_rows(named=True):
+    for row in robustness_df.sort(by="policy").iter_rows(named=True):
         policy = row["policy"][0]
         matches = solved_df.filter(pl.col("Pi_star") == policy)
         if matches.height == 1:
-            label = matches["config"][0]
+            label = matches["config"].str.replace("_", " ").item()
         else:
-            label = matches["config"].str.join(" & ")[0]
+            label = matches["config"].str.replace("_", " ").str.join(" & ").item()
         x = range(len(row["mean_cost"]))
         plt.scatter(x, row["mean_cost"], label=label)
+        # TODO: Discuss between errors and not erros.
+        # plt.errorbar(x, row["mean_cost"], yerr=row["std_cost"], label=label, fmt="o", capsize=3, alpha=0.6)
+        # Do std above and below with fill between
+        # import numpy as np
+        # plt.fill_between(
+        #     x,
+        #     np.array(row["mean_cost"]) - np.array(row["std_cost"]),
+        #     np.array(row["mean_cost"]) + np.array(row["std_cost"]),
+        #     alpha=0.2,
+        # )
+
+        
+    if y_lim is not None:
+        plt.ylim(*y_lim)
+    plt.title(fr"Cost over pertubed market ask b={b} over m")
+    plt.xlabel(r"Pertubed market ask $m$")
+    plt.ylabel("Cost")
     plt.legend()
+    plt.grid()
     plt.savefig(save_path)
     plt.clf()
 
@@ -56,9 +74,9 @@ if __name__ == "__main__":
     from const import (
         DATA_FOLDER,
         PLOTS_FOLDER,
-        CONVERGENCE_SAVE_NAME,
-        ROBUSTNESS_SAVE_NAME,
         STAR_SAVE_NAME,
+        ROBUSTNESS_SAVE_NAME,
+        CONVERGENCE_SAVE_NAME,
     )
 
     conv_df = pl.read_parquet(DATA_FOLDER / CONVERGENCE_SAVE_NAME)
@@ -75,11 +93,20 @@ if __name__ == "__main__":
     #         dist_metric=metric,
     #     )
     # Plot for robustness
+    all_costs = rob_df["mean_cost"].explode()
+    y_min, y_max = all_costs.min(), all_costs.max()
+    padding = (y_max - y_min) * 0.05
+    y_lim = (y_min - padding, y_max + padding)
     for b in bs:
         b_df = rob_df.filter(pl.col("b") == b)
-        grouped_df = b_df.group_by('policy').agg(pl.col("mean_cost"))
+        grouped_df = b_df.group_by('policy').agg(
+            pl.col("mean_cost"),
+            pl.col("std_cost"),
+        )
         plot_robustness(
             robustness_df=grouped_df,
             solved_df=solved_df,
+            b=b,
             save_path=(PLOTS_FOLDER / f"robustness_b_{b}".replace(".", ",")),
+            y_lim=y_lim,
         )
