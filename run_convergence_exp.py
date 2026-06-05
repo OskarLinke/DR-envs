@@ -44,8 +44,8 @@ for metric in DISTANCE_METRICS:
         rows.append({
             "config": config_name, 
             "convergence": results,
-            "mean": np.mean(results),
-            "std": np.std(results),
+            "mean": results.mean(axis=0),
+            "std": results.std(axis=0),
             })
 
 all_configs_df = pl.DataFrame(rows)
