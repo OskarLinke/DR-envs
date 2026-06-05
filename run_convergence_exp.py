@@ -7,7 +7,7 @@ from const import(
         SIGMAS, 
         DISTANCE_METRICS,
         MAX_ITER_K, 
-        NUM_EXPERIMENTS, 
+        NUM_CONV_EXPERIMENTS, 
         DATA_FOLDER, 
         STAR_SAVE_NAME,
         )
@@ -50,7 +50,7 @@ for metric in DISTANCE_METRICS:
             row = data.row(by_predicate=pl.col("config") == config_name, named=True)
             V_robust_star = np.array(row["V_star"])
             results = []
-            for n in range(NUM_EXPERIMENTS):
+            for n in range(NUM_CONV_EXPERIMENTS):
                 Q_K, V_K, V_dists, _ = REVI(
                     env=nominal_env, md_nom=nom_md, sigma=sigma,
                     dist_metric=metric, K=MAX_ITER_K, V_star=V_robust_star,

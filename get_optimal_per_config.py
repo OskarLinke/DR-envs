@@ -86,6 +86,7 @@ if existing_configs is not None:
 # Ensure data folder exists
 DATA_FOLDER.mkdir(parents=False, exist_ok=True)
 if all_configs_df is not None:
+    all_configs_df = all_configs_df.sort(by="config")
     all_configs_df.write_parquet(save_path)
     print(f"Finished! Entire run took {time() - start_time:.2f} seconds") 
 else:

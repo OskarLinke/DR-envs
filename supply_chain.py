@@ -40,7 +40,7 @@ class SupplyChain:
         self.k = k
         self.gamma = gamma
         self.t = 0
-        self.S = 0
+        self.s = 0
         self.b = b
         assert 0 <= m < n ,"m must be in [0, n-1]"
         self.m = m
@@ -82,24 +82,24 @@ class SupplyChain:
         Takes a step in the environment given an action. 
         """
         self.dt = self.market_ask() 
-        reward = (self.gamma**self.t) * self.reward(self.S, a)
-        self.S = self.S + a - self.dt 
-        if self.S < 0: 
-            self.S = 0 
+        reward = (self.gamma**self.t) * self.reward(self.s, a)
+        self.s = self.s + a - self.dt 
+        if self.s < 0: 
+            self.s = 0 
         self.t += 1 
         if verbose:
             print(f"{a} items are ordered")
             print(f"{self.dt} goods are requested by the market")
             print(f"The reward is {reward}")
-            print(f"New state is {self.S}")
-        return (self.S, reward)
+            print(f"New state is {self.s}")
+        return (self.s, reward)
 
     def legal_actions(self) -> int: 
         """
         Returns all legal actions as size of action space. The agent cannot 
-        posses more than n goods at any time, i.e. more than self.n - self.S
+        posses more than n goods at any time, i.e. more than self.n - self.s
         """
-        return self.n - self.S
+        return self.n - self.s
 
     def action_size(self) -> int:
         """
@@ -118,7 +118,7 @@ class SupplyChain:
         Resets the environment. 
         """
         self.t = 0 
-        self.S = s 
+        self.s = s 
 
     
     ### Get nominal Distributions #############################################
