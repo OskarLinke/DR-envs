@@ -6,14 +6,15 @@ import numpy as np
 def plot_convergence(
     convergence_df: pl.DataFrame,
     save_path: Path,
-    configs: list[str] | None = None,
-    title: str = "Convergence of REVI by L2 norm of error",
+    dist_metric: str,
 ) -> None:
-    # Filter the configs we want to plot
-    if configs is not None:
-        convergence_df = convergence_df.filter(pl.col("config").is_in(configs))
-    labels = convergence_df["config"].str.replace("_", " ").to_list()
-    means = convergence_df["mean"].to_list()
+    title = f"Convergence of REVI by {dist_metric} norm of error"
+    # Filter for dist metric
+    convergence_df = convergence_df.filter(pl.col("config").str.contains(dist_metric))
+    labels = convergence_df["config"].str.replace(f"{dist_metric}_", r"$\sigma=$").to_list()
+    print(labels)
+    breakpoint()
+    means = convergence_df["means"].to_list()
     num_plots = len(labels)
     x = range(len(means[0]))
     for i in range(num_plots):
@@ -35,4 +36,7 @@ if __name__ == "__main__":
     conv_df = pl.read_parquet(DATA_FOLDER / CONVERGENCE_SAVE_NAME)
 
     PLOTS_FOLDER.mkdir(parents=False, exist_ok=True)
-    plot_convergence(conv_df, (PLOTS_FOLDER / "test"), configs=["L2_1.0"])
+    # Plot for L2 distance metric
+    plot_convergence(
+        convergence_df=conv_df, save_path=(PLOTS_FOLDER / "test"), dist_metric="L2",
+    )

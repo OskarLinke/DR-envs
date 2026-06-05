@@ -36,7 +36,7 @@ for metric in DISTANCE_METRICS:
         for n in range(NUM_EXPERIMENTS):
             Q_K, V_K, V_dists, _ = REVI(
                 env=nominal_env, md_nom=nom_md, sigma=sigma,
-                K=MAX_ITER_K, V_star=V_robust_star,
+                dist_metric=metric, K=MAX_ITER_K, V_star=V_robust_star,
             )
             assert V_dists is not None, "Must enter valid V_star to REVI"
             results.append(V_dists)
