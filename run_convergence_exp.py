@@ -33,6 +33,14 @@ if conv_save_path.exists():
     existing_exps_names = existing_exps["config"].to_list()
     print(f"Found existing configs: {existing_exps_names}")
 
+to_run_config_names = [
+    metric + "_" + str(sigma) for metric in DISTANCE_METRICS for sigma in SIGMAS
+]
+assert to_run_config_names == data["config"].to_list(), (
+    f"Missing conofigs. Run wants:\n{to_run_config_names}\n"
+    f"Existing are:\n{data['config'].to_list()}"
+)
+
 # Run REVI with uniform as nominal transition
 rows: list[dict] = [] # FIGURE OUT WHAT'S BEST
 for metric in DISTANCE_METRICS:
