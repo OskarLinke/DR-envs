@@ -12,17 +12,17 @@ def plot_convergence(
     # Filter for dist metric
     convergence_df = convergence_df.filter(pl.col("config").str.contains(dist_metric))
     labels = convergence_df["config"].str.replace(f"{dist_metric}_", r"$\sigma=$").to_list()
-    print(labels)
-    breakpoint()
     means = convergence_df["means"].to_list()
     num_plots = len(labels)
-    x = range(len(means[0]))
+    breakpoint()
     for i in range(num_plots):
+        x = range(len(means[i]))
         plt.plot(x, means[i], label=labels[i])
     plt.xlabel(r"Iteration $k$")
     plt.ylabel(r"$\|V_k - V^*\|_2$")
     plt.yscale("log")
     plt.legend()
+    plt.grid()
     plt.title(title)
     plt.savefig(save_path)
 
@@ -38,5 +38,5 @@ if __name__ == "__main__":
     PLOTS_FOLDER.mkdir(parents=False, exist_ok=True)
     # Plot for L2 distance metric
     plot_convergence(
-        convergence_df=conv_df, save_path=(PLOTS_FOLDER / "test"), dist_metric="L2",
+        convergence_df=conv_df, save_path=(PLOTS_FOLDER / "test"), dist_metric="KL",
     )
