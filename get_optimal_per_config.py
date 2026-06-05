@@ -1,6 +1,6 @@
 import numpy as np
 import polars as pl
-import time
+from time import time
 from supply_chain import SupplyChain
 from algos import REVI, VI
 from const import (
@@ -11,12 +11,11 @@ from const import (
     STAR_SAVE_NAME
 )
 
+### Init env and other vars
 nominal_env = SupplyChain(b=0)
 nom_md = nominal_env.market_ask_distribution()
 save_path = DATA_FOLDER / STAR_SAVE_NAME
-
 rows = []
-
 ex_config_names = None
 existing_configs = None
 all_configs_df = None
@@ -26,8 +25,8 @@ if save_path.exists():
     ex_config_names = existing_configs["config"].to_list()
     print(f"Found existing configs: {ex_config_names}")
 
-start_time = time.time()
-current_time = time.time()
+start_time = time()
+current_time = time()
 for sigma in SIGMAS:
     for dm in DISTANCE_METRICS:
         config_name = dm + "_" + str(sigma)
@@ -47,11 +46,11 @@ for sigma in SIGMAS:
             })
             print(
                 f"Run with sigma: {sigma} and distance metric: {dm} took "
-                f"{time.time() - current_time:.2f} seconds"
+                f"{time() - current_time:.2f} seconds"
             ) 
         else:
             print(f"Config {config_name} already exists in the data, skipping...")
-        current_time = time.time()
+        current_time = time()
 
 
 # Vanilla VI
@@ -87,6 +86,6 @@ if existing_configs is not None:
 DATA_FOLDER.mkdir(parents=False, exist_ok=True)
 if all_configs_df is not None:
     all_configs_df.write_parquet(save_path)
-    print(f"Finished! Entire run took {time.time() - start_time:.2f} seconds") 
+    print(f"Finished! Entire run took {time() - start_time:.2f} seconds") 
 else:
     raise ValueError("Both non-existing data path and no computed results")
