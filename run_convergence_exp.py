@@ -17,9 +17,9 @@ from time import time
 nominal_env = SupplyChain(b=0) # With b=0 uniform
 nom_md = nominal_env.market_ask_distribution()
 conv_save_path = DATA_FOLDER / CONVERGENCE_SAVE_NAME
-existing_configs = None
-ex_config_names = None
-all_configs_df = None
+existing_exps = None
+existing_exps_names = None
+all_exps_df = None
 start_time = time()
 
 try: 
@@ -29,16 +29,16 @@ except FileNotFoundError:
     raise  
 
 if conv_save_path.exists():
-    existing_configs = pl.read_parquet(conv_save_path)
-    ex_config_names = existing_configs["config"].to_list()
-    print(f"Found existing configs: {ex_config_names}")
+    existing_exps = pl.read_parquet(conv_save_path)
+    existing_exps_names = existing_exps["config"].to_list()
+    print(f"Found existing configs: {existing_exps_names}")
 
 # Run REVI with uniform as nominal transition
 rows: list[dict] = [] # FIGURE OUT WHAT'S BEST
 for metric in DISTANCE_METRICS:
     for sigma in SIGMAS:
         config_name = metric + "_" + str(sigma)
-        if ex_config_names is None or config_name not in ex_config_names:
+        if existing_exps_names is None or config_name not in existing_exps_names:
             row = data.row(by_predicate=pl.col("config") == config_name, named=True)
             V_robust_star = np.array(row["V_star"])
             results = []
@@ -52,7 +52,7 @@ for metric in DISTANCE_METRICS:
             results = np.array(results)
             rows.append({
                 "config": config_name, 
-                "convergence": results,
+                "convergence": results, 
                 "means": results.mean(axis=0),
                 "stds": results.std(axis=0),
                 })
@@ -61,14 +61,28 @@ for metric in DISTANCE_METRICS:
 
 
 # Build one DataFrame per row and extend
+
 if rows != []:
-    all_configs_df = pl.DataFrame(rows[0])
-    for row in rows[1:]:
-        all_configs_df = all_configs_df.extend(pl.DataFrame(row))
+    all_exps_df = pl.DataFrame(rows)
+
+if existing_exps is not None: 
+    if all_exps_df is not None: 
+        all_exps_df = ( 
+        pl.concat([all_exps_df, existing_exps], how="vertical")
+                       .unique(subset="config", keep="last") 
+                       )
+    else: 
+        all_exps_df = existing_exps
 
 # Ensure data folder exists
 DATA_FOLDER.mkdir(parents=False, exist_ok=True)
 
-if all_configs_df is not None:
-    all_configs_df.write_parquet(conv_save_path)
+
+
+if all_exps_df is not None:
+    all_exps_df.sort(by="config")
+    all_exps_df.write_parquet(conv_save_path)
     print(f"Finished! Entire run took {time() - start_time:.2f} seconds") 
+
+else: 
+    raise ValueError("No existing data and no computed results")
