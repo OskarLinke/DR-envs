@@ -69,18 +69,19 @@ if ex_config_names is not None and "non-robust" not in ex_config_names:
 
 # Build one DataFrame per row and extend
 if rows != []:
-    all_configs_df = pl.DataFrame(rows[0])
-    for row in rows[1:]:
-        all_configs_df = all_configs_df.extend(pl.DataFrame(row))
+    all_configs_df = pl.DataFrame(rows)
 
 # Extend with existing data if it exists
 if existing_configs is not None:
-    all_configs_df = (
-        pl.concat([all_configs_df, existing_configs], how="vertical")
-        .unique(subset="config", keep="last")
-        # Add rows, drop 'config' duplicates.
-        # Keep last gives 'existing_configs' rows priority
-    ) if all_configs_df is not None else existing_configs
+    if all_configs_df is not None:
+        all_configs_df = (
+            pl.concat([all_configs_df, existing_configs], how="vertical")
+            .unique(subset="config", keep="last")
+            # Add rows, drop 'config' duplicates.
+            # Keep last gives 'existing_configs' rows priority
+        )
+    else:
+        all_configs_df = existing_configs
 
 # Ensure data folder exists
 DATA_FOLDER.mkdir(parents=False, exist_ok=True)
