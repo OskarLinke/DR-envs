@@ -74,29 +74,25 @@ def find_inf_market_dist(
         # Distance is measured between the induced transition kernel P_ and the
         # nominal kernel nom_P, not between md_ and nom_md.
         r_ = env.reward_probabilities_sa(state, action, md_)
-        if dist_metric == "L2":
-            return sigma_r - np.sqrt(np.sum(np.square(r_ - nom_r)))
-        elif dist_metric == "KL":
+        if dist_metric == "KL":
             # KL(P_ || nom_P). p_*log(p_/nom_P) -> 0 where p_ == 0.
             mask = r_ > 0
             kl = np.sum(r_[mask] * np.log(r_[mask] / np.maximum(nom_r[mask], 1e-12)))
             return sigma_r - kl
         else:
-            raise NotImplementedError("Implemented distance metrics include: L2, KL")
+            raise NotImplementedError("Implemented distance metrics include: KL")
 
     def p_distance_constraint(md_):
         # Distance is measured between the induced transition kernel P_ and the
         # nominal kernel nom_P, not between md_ and nom_md.
         p_ = env.transition_kernel_sa(state, action, md_)
-        if dist_metric == "L2":
-            return sigma_p - np.sqrt(np.sum(np.square(p_ - nom_P)))
-        elif dist_metric == "KL":
+        if dist_metric == "KL":
             # KL(P_ || nom_P). p_*log(p_/nom_P) -> 0 where p_ == 0.
             mask = p_ > 0
             kl = np.sum(p_[mask] * np.log(p_[mask] / np.maximum(nom_P[mask], 1e-12)))
             return sigma_p - kl
         else:
-            raise NotImplementedError("Implemented distance metrics include: L2, KL")
+            raise NotImplementedError("Implemented distance metrics include: KL")
 
     def sum_constraint(md_): 
         return 1.0 - np.sum(md_) 
@@ -148,7 +144,7 @@ def better_find_inf_market_dist(
     sigma : ambiguity ball radius.
     M_sa : (S, n+1) linear map md -> transition probability vector.
     r_sa : (n+1,) linear map md -> expected reward.
-    dist_metric : "KL" or "L2". Distance is measured between the induced
+    dist_metric : "KL". Distance is measured between the induced
         transition kernel and nom_P, not between md and nom_md.
     """
 
@@ -164,9 +160,7 @@ def better_find_inf_market_dist(
 
     def distance_constraint(md_):
         p_ = M_sa @ md_
-        if dist_metric == "L2":
-            return sigma - np.sqrt(np.sum(np.square(p_ - nom_P)))
-        elif dist_metric == "KL":
+        if dist_metric == "KL":
             # KL(P_ || nom_P). True KL is +inf when p_[i] > 0 but
             # nom_P[i] == 0 (support violation). SLSQP cannot consume
             # np.inf in a constraint, so return a large finite penalty
@@ -180,7 +174,7 @@ def better_find_inf_market_dist(
                 )
             return sigma - kl
         else:
-            raise NotImplementedError("Implemented distance metrics include: L2, KL")
+            raise NotImplementedError("Implemented distance metrics include: KL")
 
     def sum_constraint(md_):
         return 1.0 - np.sum(md_)
