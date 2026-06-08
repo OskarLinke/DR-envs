@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 import numpy as np
 from utils import (
     bellman_operator,
-    find_inf_market_dist,
+    find_inf_kernel_reward,
 )
 
 
@@ -54,15 +54,12 @@ def REVI(
                     Q_k[s, a] = -np.inf
                     continue
 
-                inf_md = find_inf_market_dist(
+                inf_P, inf_r = find_inf_kernel_reward(
                     state=s, action=a, nom_md=md_nom,
                     sigma_p=sigma, sigma_r=sigma,
                     V=V_k, gamma=gamma,
                     env=env, dist_metric=dist_metric,
                 )
-                
-                inf_P = env.transition_kernel_sa(s, a, inf_md) 
-                inf_r = env.expected_reward_sa(s, a, inf_md)
                 # Bellman operator becomes robust with inf (p,r)
                 Q_k[s, a] = bellman_operator(inf_P, V_k, inf_r, gamma)
 

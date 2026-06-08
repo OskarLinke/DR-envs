@@ -1,93 +1,108 @@
+from time import time
+from typing import Any
+
 import numpy as np
 import polars as pl
-from time import time
-from supply_chain import SupplyChain
+from joblib import Parallel, delayed
+from tqdm import tqdm
+
 from algos import REVI, VI
 from const import (
-    SIGMAS,
+    DATA_FOLDER,
     DISTANCE_METRICS,
     MAX_ITER_K,
-    DATA_FOLDER,
-    STAR_SAVE_NAME
+    N_JOBS,
+    SIGMAS,
+    STAR_SAVE_NAME,
 )
-
-### Init env and other vars
-nominal_env = SupplyChain(b=0)
-nom_md = nominal_env.market_ask_distribution()
-save_path = DATA_FOLDER / STAR_SAVE_NAME
-rows = []
-ex_config_names = None
-existing_configs = None
-all_configs_df = None
-
-if save_path.exists():
-    existing_configs = pl.read_parquet(save_path)
-    ex_config_names = existing_configs["config"].to_list()
-    print(f"Found existing configs: {ex_config_names}")
-
-start_time = time()
-current_time = time()
-for sigma in SIGMAS:
-    for dm in DISTANCE_METRICS:
-        config_name = dm + "_" + str(sigma)
-        if ex_config_names is None or config_name not in ex_config_names:
-            Q_K, V_K, _, evals = REVI(
-                env=nominal_env, md_nom=nom_md, sigma=sigma,
-                K=MAX_ITER_K, V_star=None, dist_metric=dm,
-            )
-            Pi_K = np.argmax(Q_K, axis=1)
-            # Check if this config already 
-            rows.append({
-                "config": config_name,
-                "Pi_star": [Pi_K.tolist()],   # wrap in list to make it one row
-                "V_star": [V_K.tolist()],
-                "Q_star": [Q_K.tolist()],
-                "Evaluations": evals,
-            })
-            print(
-                f"Run with sigma: {sigma} and distance metric: {dm} took "
-                f"{time() - current_time:.2f} seconds"
-            ) 
-        else:
-            print(f"Config {config_name} already exists in the data, skipping...")
-        current_time = time()
+from supply_chain import SupplyChain
 
 
-# Vanilla VI
-if ex_config_names is not None and "non-robust" not in ex_config_names:
-    P = nominal_env.nominal_kernel()
-    R_exp = nominal_env.nominal_expected_reward()
-    Q_K, V_K, evals = VI(nominal_env, P, R_exp, MAX_ITER_K)
+def run_revi_config(sigma: float, dm: str) -> dict:
+    env = SupplyChain(b=0)
+    nom_md = env.market_ask_distribution()
+    Q_K, V_K, _, evals = REVI(
+        env=env, md_nom=nom_md, sigma=sigma,
+        K=MAX_ITER_K, V_star=None, dist_metric=dm,
+    )
     Pi_K = np.argmax(Q_K, axis=1)
-    rows.append({
-        "config": "non-robust",
-        "Pi_star": [Pi_K.tolist()],
-        "V_star": [V_K.tolist()],
-        "Q_star": [Q_K.tolist()],
+    return {
+        "config": dm + "_" + str(sigma),
+        "Pi_star": Pi_K.tolist(),
+        "V_star": V_K.tolist(),
+        "Q_star": Q_K.tolist(),
         "Evaluations": evals,
-    })
+    }
 
-# Build one DataFrame per row and extend
-if rows != []:
-    all_configs_df = pl.DataFrame(rows)
 
-# Extend with existing data if it exists
-if existing_configs is not None:
-    if all_configs_df is not None:
-        all_configs_df = (
-            pl.concat([all_configs_df, existing_configs], how="vertical")
-            .unique(subset="config", keep="last")
-            # Add rows, drop 'config' duplicates.
-            # Keep last gives 'existing_configs' rows priority
-        )
+def run_non_robust() -> dict[str, Any]:
+    env = SupplyChain(b=0)
+    P = env.nominal_kernel()
+    R_exp = env.nominal_expected_reward()
+    Q_K, V_K, evals = VI(env, P, R_exp, MAX_ITER_K)
+    Pi_K = np.argmax(Q_K, axis=1)
+    return {
+        "config": "non-robust",
+        "Pi_star": Pi_K.tolist(),
+        "V_star": V_K.tolist(),
+        "Q_star": Q_K.tolist(),
+        "Evaluations": evals,
+    }
+
+
+if __name__ == "__main__":
+    save_path = DATA_FOLDER / STAR_SAVE_NAME
+    ex_config_names = None
+    existing_configs = None
+    all_configs_df = None
+
+    if save_path.exists():
+        existing_configs = pl.read_parquet(save_path)
+        ex_config_names = existing_configs["config"].to_list()
+        print(f"Found existing configs: {ex_config_names}")
+
+    start_time = time()
+
+    # Build job list for missing configs.
+    jobs = []
+    for sigma in SIGMAS:
+        for dm in DISTANCE_METRICS:
+            config_name = dm + "_" + str(sigma)
+            if ex_config_names is None or config_name not in ex_config_names:
+                jobs.append(delayed(run_revi_config)(sigma, dm))
+            else:
+                print(f"Config {config_name} already exists, skipping...")
+
+    if ex_config_names is None or "non-robust" not in ex_config_names:
+        jobs.append(delayed(run_non_robust)())
     else:
-        all_configs_df = existing_configs
+        print("Config non-robust already exists, skipping...")
 
-# Ensure data folder exists
-DATA_FOLDER.mkdir(parents=False, exist_ok=True)
-if all_configs_df is not None:
-    all_configs_df = all_configs_df.sort(by="config")
-    all_configs_df.write_parquet(save_path)
-    print(f"Finished! Entire run took {time() - start_time:.2f} seconds") 
-else:
-    raise ValueError("Both non-existing data path and no computed results")
+    rows: list[dict] = []
+    if jobs:
+        rows = list(tqdm(
+            Parallel(n_jobs=N_JOBS, return_as="generator")(jobs),
+            total=len(jobs),
+            desc="configs",
+        ))
+
+    all_configs_df = pl.DataFrame(rows) if rows else None
+
+    if existing_configs is not None:
+        if all_configs_df is not None:
+            # Match existing parquet schema (Evaluations stored as Int32).
+            all_configs_df = all_configs_df.cast({"Evaluations": pl.Int32})
+            all_configs_df = (
+                pl.concat([all_configs_df, existing_configs], how="vertical")
+                .unique(subset="config", keep="last")
+            )
+        else:
+            all_configs_df = existing_configs
+
+    DATA_FOLDER.mkdir(parents=False, exist_ok=True)
+    if all_configs_df is not None:
+        all_configs_df = all_configs_df.sort(by="config")
+        all_configs_df.write_parquet(save_path)
+        print(f"Finished! Entire run took {time() - start_time:.2f} seconds")
+    else:
+        raise ValueError("Both non-existing data path and no computed results")

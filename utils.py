@@ -7,6 +7,94 @@ from my_typing import ProbVector
 
 MAX_OPTIM_ITER = 150
 
+_KL_EPS = 1e-12
+_TV_TOL = 1e-15
+
+
+def _kl(p: ProbVector, q: ProbVector) -> float:
+    """KL(p || q). Treats 0*log(0) = 0. Floors q at _KL_EPS for solver stability."""
+    mask = p > 0
+    return float(np.sum(p[mask] * np.log(p[mask] / np.maximum(q[mask], _KL_EPS))))
+
+
+def _tv(p: ProbVector, q: ProbVector) -> float:
+    """Total variation distance: (1/2) * ||p - q||_1."""
+    return 0.5 * float(np.linalg.norm(p - q, ord=1))
+
+
+def _chi_sq(p: ProbVector, q: ProbVector) -> float:
+    """Chi-square divergence chi^2(p || q) = sum (p_i - q_i)^2 / q_i.
+
+    Returns +inf when q has zero mass where p > 0 (absolute continuity violated).
+    """
+    mask = q > 0
+    if np.any((p > 0) & ~mask):
+        return float("inf")
+    return float(np.sum((p[mask] - q[mask]) ** 2 / q[mask]))
+
+
+def _distance(p: ProbVector, q: ProbVector, dist_metric: str) -> float:
+    if dist_metric == "KL":
+        return _kl(p, q)
+    if dist_metric == "TV":
+        return _tv(p, q)
+    if dist_metric == "CHI_SQ":
+        return _chi_sq(p, q)
+    raise NotImplementedError("Implemented distance metrics: KL, TV, CHI_SQ")
+
+
+def worst_case_tv(
+    p_nom: ProbVector, costs: NDArray[Any], rho: float
+) -> ProbVector:
+    """Closed-form worst-case distribution over a TV ball.
+
+    Solves
+        min_p  <p, costs>
+        s.t.   (1/2) * ||p - p_nom||_1 <= rho
+               p in simplex.
+
+    Algorithm: water-filling. Shift probability mass from highest-cost
+    coordinate to lowest-cost coordinate, limited by the per-coordinate
+    bounds [0, 1] and the remaining transport budget rho. O(S log S).
+
+    Constraint satisfied by construction: total mass moved is at most rho,
+    which equals the TV distance between the returned p and p_nom.
+
+    References
+    ----------
+    Iyengar (2005), "Robust Dynamic Programming", Math. Oper. Res. 30(2),
+        Section 4 (rectangular ambiguity, TV/L1 specialization).
+    Nilim & El Ghaoui (2005), "Robust Control of Markov Decision Processes
+        with Uncertain Transition Matrices", Oper. Res. 53(5).
+    Ho, Petrik, Wiesemann (2018), "Fast Bellman Updates for Robust MDPs",
+        ICML — explicit O(S log S) algorithm.
+    """
+    p = p_nom.astype(np.float64).copy()
+    budget = float(rho)
+    order = np.argsort(costs)  # ascending: cheapest first
+    lo, hi = 0, len(costs) - 1
+    while budget > _TV_TOL and lo < hi:
+        i_lo, i_hi = order[lo], order[hi]
+        give = min(p[i_hi], budget, 1.0 - p[i_lo])
+        if give <= _TV_TOL:
+            # Endpoints saturated; advance whichever side is stuck.
+            if p[i_hi] <= _TV_TOL:
+                hi -= 1
+            elif p[i_lo] >= 1.0 - _TV_TOL:
+                lo += 1
+            else:
+                break
+            continue
+        p[i_hi] -= give
+        p[i_lo] += give
+        budget -= give
+        if p[i_hi] <= _TV_TOL:
+            hi -= 1
+        if p[i_lo] >= 1.0 - _TV_TOL:
+            lo += 1
+    return p
+
+
 def bellman_operator(P, V, r_val, gamma):
     return r_val + gamma*np.dot(P, V)
 
@@ -33,167 +121,84 @@ def empirical_nominal_kernel(env, N: int = 1000):
 
     return P_hat
 
-def find_inf_market_dist(
-    state: int, 
-    action: int, 
+
+def find_inf_kernel_reward(
+    state: int,
+    action: int,
     nom_md: ProbVector,
-    V: NDArray[Any], 
+    V: NDArray[Any],
     gamma: float,
     sigma_p: float,
     sigma_r: float,
     env,
     dist_metric: str = "KL",
-) -> ProbVector:
+) -> tuple[ProbVector, float]:
+    """Worst-case (transition kernel, expected reward) over an ambiguity ball.
+
+    Returns (inf_P, inf_r) achieving
+        min  inf_r + gamma * <inf_P, V>
+        s.t. d(inf_P, nom_P) <= sigma_p,  inf_P in simplex(S)
+             d(inf_r_dist, nom_r_dist) <= sigma_r,  inf_r_dist in simplex(R)
+    where d is the requested ambiguity metric. nom_P and nom_r are the
+    transition kernel and reward distribution induced by nom_md.
+
+    Dispatch
+    --------
+    TV: closed-form via worst_case_tv (Iyengar 2005, Nilim & El Ghaoui 2005,
+        Ho-Petrik-Wiesemann 2018). Exact and robust.
+    KL / CHI_SQ: SLSQP minimize over the market distribution md, then map
+        the optimizer back to (P, r) via env.
     """
-    state is state
-    action is action
-    nom_md is the nomrinal market ask distribution (md = market distribution) 
-    V is the value-fucntion 
-    gamma is the discount factor
-    sigma_p is the robustness level
-    exp_rw_func is a function which given a market distribution and state-action
-        pair gives an expected reward 
-    trans_kernel_func is a function which takes a market distribution and state-action
-        pair, and returns a transition probability vector 
-    env is the MDP. Currently tied to the supply-chain env
-    dist_metric is the distance metric
-    """ 
 
-    # Nominal transition kernel induced by the nominal market distribution.
-    # The ambiguity ball is defined on the transition kernel, not on md_.
-    nom_P = env.transition_kernel_sa(state, action, nom_md)
-    nom_r = env.reward_probabilities_sa(state, action, nom_md)
+    nom_P: ProbVector = env.transition_kernel_sa(state, action, nom_md)
+    nom_r: ProbVector = env.reward_probabilities_sa(state, action, nom_md)
+    r_values = np.arange(len(nom_r), dtype=np.float64)
 
-    def objective(md_):
+    if dist_metric == "TV":
+        # Independent rectangular inner problems: kernel uses V as cost,
+        # reward distribution uses reward values as cost.
+        inf_P = worst_case_tv(nom_P, V, sigma_p)
+        inf_r_dist = worst_case_tv(nom_r, r_values, sigma_r)
+        inf_r = float(np.dot(inf_r_dist, r_values))
+        return inf_P, inf_r
+
+    # KL / CHI_SQ: minimize over md and recover (P, r) afterwards.
+    def objective(md_: ProbVector) -> float:
         r_val = env.expected_reward_sa(state, action, md_)
         p_ = env.transition_kernel_sa(state, action, md_)
+        return r_val + gamma * np.dot(p_, V)
 
-        return r_val + gamma*np.dot(p_, V)
+    def r_distance_constraint(md_: ProbVector) -> float:
+        # Distance measured between induced reward distribution r_ and nominal nom_r.
+        r_: ProbVector = env.reward_probabilities_sa(state, action, md_)
+        return sigma_r - _distance(r_, nom_r, dist_metric)
 
-    def r_distance_constraint(md_):
-        # Distance is measured between the induced transition kernel P_ and the
-        # nominal kernel nom_P, not between md_ and nom_md.
-        r_ = env.reward_probabilities_sa(state, action, md_)
-        if dist_metric == "KL":
-            # KL(P_ || nom_P). p_*log(p_/nom_P) -> 0 where p_ == 0.
-            mask = r_ > 0
-            kl = np.sum(r_[mask] * np.log(r_[mask] / np.maximum(nom_r[mask], 1e-12)))
-            return sigma_r - kl
-        else:
-            raise NotImplementedError("Implemented distance metrics include: KL")
+    def p_distance_constraint(md_: ProbVector) -> float:
+        # Distance measured between induced transition kernel p_ and nominal nom_P.
+        p_: ProbVector = env.transition_kernel_sa(state, action, md_)
+        return sigma_p - _distance(p_, nom_P, dist_metric)
 
-    def p_distance_constraint(md_):
-        # Distance is measured between the induced transition kernel P_ and the
-        # nominal kernel nom_P, not between md_ and nom_md.
-        p_ = env.transition_kernel_sa(state, action, md_)
-        if dist_metric == "KL":
-            # KL(P_ || nom_P). p_*log(p_/nom_P) -> 0 where p_ == 0.
-            mask = p_ > 0
-            kl = np.sum(p_[mask] * np.log(p_[mask] / np.maximum(nom_P[mask], 1e-12)))
-            return sigma_p - kl
-        else:
-            raise NotImplementedError("Implemented distance metrics include: KL")
-
-    def sum_constraint(md_): 
-        return 1.0 - np.sum(md_) 
-
-    constraints = [
-    {"type": "ineq", "fun": p_distance_constraint}, 
-        {"type": "ineq", "fun": r_distance_constraint}, 
-        {"type": "eq", "fun": sum_constraint}, 
-        ]
-
-    result = minimize(
-        objective,
-        x0=nom_md,
-        constraints= constraints,
-        bounds=[(0, 1) for _ in range(len(nom_md))],
-        method="SLSQP",
-        options = {"maxiter": MAX_OPTIM_ITER, "ftol": 1e-8},
-    )
-    if not result.success:
-        print(f"Warning: find_inf_market_dist optimization failed: {result.message}")
-
-    # Clamp to [0,1] to handle numerical errors
-    return result.x
-
-
-def better_find_inf_market_dist(
-    nom_md: NDArray[Any],
-    V: NDArray[Any],
-    gamma: float,
-    sigma: float,
-    M_sa: NDArray[Any],
-    r_sa: NDArray[Any],
-    dist_metric: str = "KL",
-) -> NDArray[Any]:
-    """
-    Find the adversarial market-ask distribution for one (s, a).
-
-    Uses precomputed linear maps so that P(s, a, md) = M_sa @ md and
-    E_md[r(s, a)] = r_sa @ md. The objective is then linear in md:
-
-        objective(md) = (r_sa + gamma * M_sa.T @ V) @ md
-
-    Parameters
-    ----------
-    nom_md : (n+1,) nominal market-ask distribution. Used as warm start
-        and to compute nom_P for the ambiguity ball.
-    V : (S,) current value function.
-    gamma : discount factor.
-    sigma : ambiguity ball radius.
-    M_sa : (S, n+1) linear map md -> transition probability vector.
-    r_sa : (n+1,) linear map md -> expected reward.
-    dist_metric : "KL". Distance is measured between the induced
-        transition kernel and nom_P, not between md and nom_md.
-    """
-
-    nom_P = M_sa @ nom_md
-    # Constant coefficient vector: objective(md) = c @ md.
-    c = r_sa + gamma * (M_sa.T @ V)
-
-    def objective(md_):
-        return c @ md_
-
-    def objective_jac(md_):
-        return c
-
-    def distance_constraint(md_):
-        p_ = M_sa @ md_
-        if dist_metric == "KL":
-            # KL(P_ || nom_P). True KL is +inf when p_[i] > 0 but
-            # nom_P[i] == 0 (support violation). SLSQP cannot consume
-            # np.inf in a constraint, so return a large finite penalty
-            # to push the iterate back into the feasible region.
-            mask = p_ > 0
-            if np.any(nom_P[mask] <= 0):
-                kl = 1e6
-            else:
-                kl = np.sum(
-                    p_[mask] * np.log(p_[mask] / np.maximum(nom_P[mask], 1e-12))
-                )
-            return sigma - kl
-        else:
-            raise NotImplementedError("Implemented distance metrics include: KL")
-
-    def sum_constraint(md_):
+    def sum_constraint(md_: ProbVector) -> float:
         return 1.0 - np.sum(md_)
 
     constraints = [
-        {"type": "ineq", "fun": distance_constraint},
+        {"type": "ineq", "fun": p_distance_constraint},
+        {"type": "ineq", "fun": r_distance_constraint},
         {"type": "eq", "fun": sum_constraint},
     ]
 
     result = minimize(
         objective,
         x0=nom_md,
-        jac=objective_jac,
         constraints=constraints,
         bounds=[(0, 1) for _ in range(len(nom_md))],
         method="SLSQP",
-        options={"maxiter": 500},
+        options={"maxiter": MAX_OPTIM_ITER, "ftol": 1e-8},
     )
     if not result.success:
-        print(f"Warning: find_inf_market_dist optimization failed: {result.message}")
+        print(f"Warning: find_inf_kernel_reward optimization failed: {result.message}")
 
-    return result.x
+    inf_md = result.x
+    inf_P = env.transition_kernel_sa(state, action, inf_md)
+    inf_r = float(env.expected_reward_sa(state, action, inf_md))
+    return inf_P, inf_r
