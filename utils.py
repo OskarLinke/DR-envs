@@ -152,7 +152,8 @@ def find_inf_kernel_reward(
 
     nom_P: ProbVector = env.transition_kernel_sa(state, action, nom_md)
     nom_r: ProbVector = env.reward_probabilities_sa(state, action, nom_md)
-    r_values = np.arange(len(nom_r), dtype=np.float64)
+    # Position i in nom_r holds prob mass for reward value -i (env stores at -reward).
+    r_values = -np.arange(len(nom_r), dtype=np.float64)
 
     if dist_metric == "TV":
         # Independent rectangular inner problems: kernel uses V as cost,

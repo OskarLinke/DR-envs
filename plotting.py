@@ -75,6 +75,7 @@ if __name__ == "__main__":
         DATA_FOLDER,
         PLOTS_FOLDER,
         STAR_SAVE_NAME,
+        DISTANCE_METRICS,
         ROBUSTNESS_SAVE_NAME,
         CONVERGENCE_SAVE_NAME,
     )
@@ -86,12 +87,12 @@ if __name__ == "__main__":
 
     PLOTS_FOLDER.mkdir(parents=False, exist_ok=True)
     # Plot for all distance metric
-    # for metric in DISTANCE_METRICS:
-    #     plot_convergence(
-    #         convergence_df=conv_df,
-    #         save_path=(PLOTS_FOLDER / f"convergence_w_{metric}_dmetric"),
-    #         dist_metric=metric,
-    #     )
+    for metric in DISTANCE_METRICS:
+        plot_convergence(
+            convergence_df=conv_df,
+            save_path=(PLOTS_FOLDER / f"convergence_w_{metric}_dmetric"),
+            dist_metric=metric,
+        )
     # Plot for robustness
     all_costs = rob_df["mean_cost"].explode()
     y_min, y_max = all_costs.min(), all_costs.max()

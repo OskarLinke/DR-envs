@@ -234,7 +234,9 @@ class SupplyChain:
         old_dt = self.dt
         for n in range(self.n + 1):
             self.dt = n
-            r_probs[self.reward(s, a)] += market_ask_dist[n]
+            # Reward is non-positive (-cost); store at index -reward so position i
+            # holds probability mass for reward value -i.
+            r_probs[-self.reward(s, a)] += market_ask_dist[n]
         # Reset market ask
         self.dt = old_dt
 

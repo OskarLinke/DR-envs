@@ -53,18 +53,25 @@ if __name__ == "__main__":
         existing_exps_names = existing_exps["config"].to_list()
         print(f"Found existing configs: {existing_exps_names}")
 
-    to_run_config_names = [
-        metric + "_" + str(sigma) for metric in DISTANCE_METRICS for sigma in SIGMAS
-    ]
-    assert to_run_config_names == data["config"].to_list(), (
-        f"Missing configs. Run wants:\n{to_run_config_names}\n"
-        f"Existing are:\n{data['config'].to_list()}"
+    to_run_config_names = ["non-robust"]
+    for metric in DISTANCE_METRICS:
+        for sigma in SIGMAS:
+            if metric == "TV" and sigma > 1:
+                continue
+            else:
+                to_run_config_names.append(metric + "_" + str(sigma))
+
+    assert set(to_run_config_names) == set(data["config"].to_list()), (
+        f"Missing configs. Run wants:\n{set(to_run_config_names)}\n"
+        f"Existing are:\n{set(data['config'].to_list())}"
     )
 
     # Build flat (config_name, metric, sigma, V_star, repeat_idx) task list.
     tasks: list[tuple[str, str, float, np.ndarray, int]] = []
     for metric in DISTANCE_METRICS:
         for sigma in SIGMAS:
+            if metric == "TV" and sigma > 1:
+                continue
             config_name = metric + "_" + str(sigma)
             if existing_exps_names is not None and config_name in existing_exps_names:
                 print(f"Config {config_name} already exists, skipping...")
