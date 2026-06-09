@@ -48,9 +48,9 @@ def plot_robustness(
             label = matches["config"].str.replace("_", " ").str.join(" & ").item()
         x = range(len(row["mean_cost"]))
         # TODO: Discuss between errors and not erros.
+        plt.errorbar(x, row["mean_cost"], yerr=row["std_cost"], label=label, fmt="o", capsize=3, alpha=0.6)
         # plt.scatter(x, row["mean_cost"], label=label)
         # plt.scatter(x, row["mean_cost"], label=label, alpha=0.6) # fix colors
-        plt.errorbar(x, row["mean_cost"], yerr=row["std_cost"], label=label, fmt="o", capsize=3, alpha=0.6)
         # import numpy as np
         # plt.fill_between( # fix colors
         #     x,
@@ -94,8 +94,10 @@ if __name__ == "__main__":
             dist_metric=metric,
         )
     # Plot for robustness
-    all_costs = rob_df["mean_cost"].explode()
-    y_min, y_max = all_costs.min(), all_costs.max()
+    all_std_costs = rob_df["std_cost"].explode()
+    all_mean_costs = rob_df["mean_cost"].explode()
+    y_min = all_mean_costs.min() - all_std_costs.min()
+    y_max = all_mean_costs.max() + all_std_costs.max()
     padding = (y_max - y_min) * 0.05
     y_lim = (y_min - padding, y_max + padding)
     for b in bs:

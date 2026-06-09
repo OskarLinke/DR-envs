@@ -1,19 +1,22 @@
 from collections import defaultdict
 from time import time
+from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 import polars as pl
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
 from algos import REVI
 from const import (
-    CONVERGENCE_SAVE_NAME,
     DATA_FOLDER,
     DISTANCE_METRICS,
     MAX_ITER_K,
     N_JOBS,
-    NUM_CONV_EXPERIMENTS,
+    NS,
+    NUM_SAM_EXPERIMENTS,
+    SAMPLES_SAVE_NAME,
     SIGMAS,
     STAR_SAVE_NAME,
     TRUE_FOLDER,
@@ -21,7 +24,7 @@ from const import (
 from supply_chain import SupplyChain
 
 
-def run_one_revi(metric: str, sigma: float, V_star: np.ndarray) -> np.ndarray:
+def run_one_revi(metric: str, sigma: float, V_star: NDArray[Any], N: int) -> float:
     # Each worker constructs its own env to avoid pickling overhead and shared state.
     env = SupplyChain(b=0)  # b=0 -> uniform nominal
     md = env.market_ask_distribution()
@@ -29,17 +32,19 @@ def run_one_revi(metric: str, sigma: float, V_star: np.ndarray) -> np.ndarray:
         env=env,
         md_nom=md,
         sigma=sigma,
+        learn_model=True,
         dist_metric=metric,
         K=MAX_ITER_K,
         V_star=V_star,
+        N=N,
     )
     assert V_dists is not None, "Must enter valid V_star to REVI"
-    return V_dists
+    return V_dists[-1]
 
 
 if __name__ == "__main__":
     start_time = time()
-    conv_save_path = DATA_FOLDER / CONVERGENCE_SAVE_NAME
+    samples_save_path = DATA_FOLDER / SAMPLES_SAVE_NAME
 
     try:
         data = pl.read_parquet(TRUE_FOLDER / STAR_SAVE_NAME)
@@ -49,8 +54,8 @@ if __name__ == "__main__":
 
     existing_exps = None
     existing_exps_names = None
-    if conv_save_path.exists():
-        existing_exps = pl.read_parquet(conv_save_path)
+    if samples_save_path.exists():
+        existing_exps = pl.read_parquet(samples_save_path)
         existing_exps_names = existing_exps["config"].to_list()
         print(f"Found existing configs: {existing_exps_names}")
 
@@ -67,8 +72,8 @@ if __name__ == "__main__":
         f"Existing are:\n{set(data['config'].to_list())}"
     )
 
-    # Build flat (config_name, metric, sigma, V_star, repeat_idx) task list.
-    tasks: list[tuple[str, str, float, np.ndarray, int]] = []
+    # Build flat (config_name, metric, sigma, V_star, num_samples, repeat_idx) task list.
+    tasks: list[tuple[str, str, float, NDArray[Any], int, int]] = []
     for metric in DISTANCE_METRICS:
         for sigma in SIGMAS:
             if metric == "TV" and sigma >= 1:
@@ -79,32 +84,35 @@ if __name__ == "__main__":
                 continue
             row = data.row(by_predicate=pl.col("config") == config_name, named=True)
             V_robust_star = np.array(row["V_star"])
-            for n in range(NUM_CONV_EXPERIMENTS):
-                tasks.append((config_name, metric, sigma, V_robust_star, n))
+            for N in NS:
+                for i in range(NUM_SAM_EXPERIMENTS):
+                    tasks.append((config_name, metric, sigma, V_robust_star, N, i))
 
     # Run all REVI invocations in parallel.
     results = list(tqdm(
         Parallel(n_jobs=N_JOBS, return_as="generator")(
-            delayed(run_one_revi)(metric, sigma, V_star)
-            for _, metric, sigma, V_star, _ in tasks
+            delayed(run_one_revi)(metric, sigma, V_star, N)
+            for _, metric, sigma, V_star, N, _ in tasks
         ),
         total=len(tasks),
         desc="REVI runs",
     ))
 
     # Group results back by config_name.
-    grouped: dict[str, list[np.ndarray]] = defaultdict(list)
-    for (config_name, _, _, _, _), V_dists in zip(tasks, results):
-        grouped[config_name].append(V_dists)
+    grouped: dict[str, list[float]] = defaultdict(list)
+    for (config_name, _, _, _, N, _), V_dists in zip(tasks, results, strict=True):
+        hash = config_name + f"-{N}"
+        grouped[hash].append(V_dists)
 
     rows: list[dict] = []
-    for config_name, V_dists_list in grouped.items():
+    for hash, V_dists_list in grouped.items():
         arr = np.array(V_dists_list)
         rows.append({
-            "config": config_name,
-            "convergence": arr,
-            "means": arr.mean(axis=0),
-            "stds": arr.std(axis=0),
+            "config": hash.split("-")[0],
+            "N_samples": int(hash.split("-")[1]),
+            "results": arr,
+            "mean": arr.mean(),
+            "std": arr.std(),
         })
 
     all_exps_df = pl.DataFrame(rows) if rows else None
@@ -122,7 +130,7 @@ if __name__ == "__main__":
 
     if all_exps_df is not None:
         all_exps_df = all_exps_df.sort(by="config")
-        all_exps_df.write_parquet(conv_save_path)
+        all_exps_df.write_parquet(samples_save_path)
         print(f"Finished! Entire run took {time() - start_time:.2f} seconds")
     else:
         raise ValueError("No existing data and no computed results")

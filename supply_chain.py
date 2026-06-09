@@ -194,7 +194,7 @@ class SupplyChain:
             P_[s_] += market_ask_dist[dt]
         return P_
 
-    def _find_num_possible_rewards(self) -> int:
+    def find_num_possible_rewards(self) -> int:
         """Helper function which gets the total count of possible rewards"""
         old_dt = self.dt
         r = None
@@ -228,7 +228,7 @@ class SupplyChain:
     def reward_probabilities_sa(
         self, s: int, a: int, market_ask_dist: ProbVector
     ) -> ProbVector:
-        R = self._find_num_possible_rewards()
+        R = self.find_num_possible_rewards()
         r_probs = np.zeros(R)
 
         old_dt = self.dt

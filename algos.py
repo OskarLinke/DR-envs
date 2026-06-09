@@ -7,19 +7,23 @@ from typing import Any
 from numpy.typing import NDArray
 import numpy as np
 from utils import (
-    bellman_operator,
+    empirical_nominal_kernels,
     find_inf_kernel_reward,
 )
 
+def _bellman_operator(P, V, r_val, gamma):
+    return r_val + gamma*np.dot(P, V)
 
 def REVI(
     env,
     md_nom,
     sigma: float,
     K: int, 
-    V_star: NDArray[Any] | None = None,
+    learn_model: bool = True,
     dist_metric: str = "KL",
     tolerance: float = 0.05, 
+    N: int = 1000,
+    V_star: NDArray[Any] | None = None,
 ) -> tuple[QFunction, VFunction, DistancesToOptimum | None, int]:
     """
     Robust Empirical Value Iteration
@@ -37,6 +41,10 @@ def REVI(
     V_k = np.zeros(S)
     V_dist_to_star = np.zeros(K) if V_star is not None else None
     evaluations = K  
+    nom_model = None
+    nom_model_sa = None
+    if learn_model:
+        nom_model = empirical_nominal_kernels(env, N)
 
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
@@ -54,14 +62,17 @@ def REVI(
                     Q_k[s, a] = -np.inf
                     continue
 
+                if learn_model and nom_model is not None:
+                    nom_model_sa = (nom_model[0][s, a], nom_model[1][s, a])
                 inf_P, inf_r = find_inf_kernel_reward(
                     state=s, action=a, nom_md=md_nom,
                     sigma_p=sigma, sigma_r=sigma,
                     V=V_k, gamma=gamma,
                     env=env, dist_metric=dist_metric,
+                    nom_model_sa=nom_model_sa if learn_model else None,
                 )
                 # Bellman operator becomes robust with inf (p,r)
-                Q_k[s, a] = bellman_operator(inf_P, V_k, inf_r, gamma)
+                Q_k[s, a] = _bellman_operator(inf_P, V_k, inf_r, gamma)
 
         V_k = np.max(Q_k, axis=1)
         if V_dist_to_star is not None:
@@ -71,7 +82,6 @@ def REVI(
         if np.linalg.norm(Q_k[mask] - Q_prev[mask], ord = np.inf) < tolerance: 
             if V_dist_to_star is not None:
                 V_dist_to_star = V_dist_to_star[:k+1]
-            print(f"REVI terminated at step {k}") 
             evaluations = k
             break
 
@@ -107,7 +117,7 @@ def VI(
                     Q_k[s, a] = -np.inf
                     continue
                 r_val = R_exp[s, a]
-                Q_k[s, a] = bellman_operator(P[s,a], V_k, r_val, gamma)
+                Q_k[s, a] = _bellman_operator(P[s,a], V_k, r_val, gamma)
         V_k = np.max(Q_k, axis=1)  
 
         mask = np.isfinite(Q_k) & np.isfinite(Q_prev) # We can't subtract np.inf values
