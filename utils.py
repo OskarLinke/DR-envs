@@ -116,13 +116,14 @@ def find_inf_kernel_reward(
         {"type": "eq", "fun": sum_constraint},
     ]
 
+    ftol = 1e-8 if dist_metric == "KL" and sigma_p > 1 else 1e-6
     result = minimize(
         objective,
         x0=nom_md,
         constraints=constraints,
         bounds=[(0, 1) for _ in range(len(nom_md))],
         method="SLSQP",
-        options={"maxiter": MAX_OPTIM_ITER, "ftol": 1e-8},
+        options={"maxiter": MAX_OPTIM_ITER, "ftol": ftol},
     )
     if not result.success:
         print(f"Warning: find_inf_kernel_reward optimization failed: {result.message}")
