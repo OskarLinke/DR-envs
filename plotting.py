@@ -3,12 +3,36 @@ from pathlib import Path
 import polars as pl
 
 
+_METRIC_LATEX = {"CHI_SQ": r"\chi^2", "KL": "KL", "TV": "TV", "CHI": r"\chi^2"}
+
+
+def _format_config_label(configs: list[str]) -> str:
+    groups: dict[str, list[str]] = {}
+    plain: list[str] = []
+    for cfg in configs:
+        if "_" not in cfg:
+            plain.append(cfg)
+            continue
+        metric, sigma = cfg.rsplit("_", 1)
+        groups.setdefault(metric, []).append(sigma)
+    parts = []
+    for metric, sigmas in groups.items():
+        latex_metric = _METRIC_LATEX.get(metric, metric)
+        if len(sigmas) == 1:
+            parts.append(fr"${latex_metric}$, $\sigma_{{{latex_metric}}}={sigmas[0]}$")
+        else:
+            sigma_str = ",".join(sigmas)
+            parts.append(fr"${latex_metric}$, $\sigma_{{{latex_metric}}}\in\{{{sigma_str}\}}$")
+    parts.extend(plain)
+    return " & ".join(parts)
+
+
 def plot_convergence(
     convergence_df: pl.DataFrame,
     save_path: Path,
     dist_metric: str,
 ) -> None:
-    title = f"Convergence of REVI by {dist_metric} norm of error"
+    title = fr"Convergence over steps $k$ of DRVI by ${_METRIC_LATEX.get(dist_metric, dist_metric)}$ norm error"
     # Filter for dist metric
     convergence_df = convergence_df.filter(pl.col("config").str.contains(dist_metric))
     labels = (
@@ -42,42 +66,27 @@ def plot_robustness(
     for row in robustness_df.sort(by="policy").iter_rows(named=True):
         policy = row["policy"][0]
         matches = solved_df.filter(pl.col("Pi_star") == policy)
-        if matches.height == 1:
-            label = matches["config"].str.replace("_", " ").item()
-        else:
-            label = matches["config"].str.replace("_", " ").str.join(" & ").item()
+        label = _format_config_label(matches["config"].to_list())
         x = range(len(row["mean_cost"]))
-        # TODO: Discuss between errors and not erros.
         plt.errorbar(x, row["mean_cost"], yerr=row["std_cost"], label=label, fmt="o", capsize=3, alpha=0.6)
-        # plt.scatter(x, row["mean_cost"], label=label)
-        # plt.scatter(x, row["mean_cost"], label=label, alpha=0.6) # fix colors
-        # import numpy as np
-        # plt.fill_between( # fix colors
-        #     x,
-        #     np.array(row["mean_cost"]) - np.array(row["std_cost"]),
-        #     np.array(row["mean_cost"]) + np.array(row["std_cost"]),
-        #     alpha=0.2,
-        # )
 
-        
     if y_lim is not None:
         plt.ylim(*y_lim)
     plt.title(fr"Cost over pertubed market ask b={b} over m")
     plt.xlabel(r"Pertubed market ask $m$")
     plt.ylabel("Cost")
-    plt.legend()
+    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0.0)
     plt.grid()
-    plt.savefig(save_path)
+    plt.savefig(save_path, bbox_inches="tight")
     plt.clf()
 
 
 
 def plot_samples(
-        samples_df: pl.DataFrame,
-        save_path: Path,
-        y_lim: tuple[float, float] | None = None,
-        ) -> None:
-    import numpy as np
+    samples_df: pl.DataFrame,
+    save_path: Path,
+    y_lim: tuple[float, float] | None = None,
+) -> None:
 
     metric = samples_df["type"][0]
     for sigma, sub in samples_df.sort("N_samples").group_by("sigma", maintain_order=True):
@@ -93,7 +102,7 @@ def plot_samples(
         plt.ylim(*y_lim)
     plt.xlabel(r"$N_{samples}$")
     plt.ylabel(r"$\|V_N - V^*\|$")
-    plt.title(f"Sample convergence ({metric})")
+    plt.title(fr"Convergence over $N$ Samples for distance metric ${_METRIC_LATEX.get(metric, metric)}$")
     plt.legend()
     plt.grid()
     plt.savefig(save_path)
@@ -125,7 +134,8 @@ if __name__ == "__main__":
           pl.col("config").str.split("_").list.last().alias("sigma")  # "KL", "TV", ...
       )
     for prefix, sub in samples_df.group_by("type"):
-        plot_samples(samples_df=sub, save_path=PLOTS_FOLDER / f"num_samples_{sub["type"][0]}", y_lim=None)
+        save_path = PLOTS_FOLDER / f"num_samples_{sub["type"][0]}"
+        plot_samples(samples_df=sub, save_path=save_path, y_lim=None)
 
 
     PLOTS_FOLDER.mkdir(parents=False, exist_ok=True)
@@ -149,11 +159,12 @@ if __name__ == "__main__":
             pl.col("mean_cost"),
             pl.col("std_cost"),
         )
+        rob_save_path = PLOTS_FOLDER / f"robustness_b_{b}".replace(".", ",")
         plot_robustness(
             robustness_df=grouped_df,
             solved_df=solved_df,
             b=b,
-            save_path=(PLOTS_FOLDER / f"robustness_b_{b}".replace(".", ",")),
+            save_path=rob_save_path,
             y_lim=y_lim,
         )
     

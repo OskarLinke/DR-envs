@@ -7,11 +7,12 @@ from const import (
     T,
     BS,
     MS,
+    N_JOBS,
     DATA_FOLDER,
+    TRUE_FOLDER,
     STAR_SAVE_NAME,
     NUM_ROB_EXPERIMENTS,
     ROBUSTNESS_SAVE_NAME,
-    N_JOBS,
 )
 
 
@@ -37,12 +38,32 @@ def run_cell(pi: tuple, b: float, m: int) -> dict:
 
 
 if __name__ == "__main__":
-    save_path = DATA_FOLDER / STAR_SAVE_NAME
-    solved_models = pl.read_parquet(save_path)
+    solved_save_path = TRUE_FOLDER / STAR_SAVE_NAME
+    robustness_save_path = DATA_FOLDER / ROBUSTNESS_SAVE_NAME
+    solved_models = pl.read_parquet(solved_save_path)
     # Find uniques, to avoid extra computations
     policies = list(set(tuple(p) for p in solved_models["Pi_star"].to_list()))
 
-    tasks = [(pi, b, m) for pi in policies for b in BS for m in MS]
+    existing_exps = None
+    existing_exps_names = None
+    if robustness_save_path.exists():
+        existing_exps = pl.read_parquet(robustness_save_path)
+        existing_exps_names = []
+        for row in existing_exps.rows(named=True):
+            existing_exps_names.append(
+                str(row["policy"]) + "-" + str(row["b"]) + "-" + str(row["m"])
+            )
+        print(f"Found {len(existing_exps_names)} existing configs")
+
+    tasks = []
+    for pi in policies:
+        for b in BS:
+            for m in MS:
+                name = str([list(pi)]) + "-" + str(b) + "-" + str(m)
+                if existing_exps_names is not None and name in existing_exps_names:
+                    print(f"Config (policy, b={b}, m={m}) already exists, skipping...")
+                    continue
+                tasks.append((pi, b, m))
 
     rows = list(tqdm(
         Parallel(n_jobs=N_JOBS, return_as="generator")(
@@ -52,6 +73,16 @@ if __name__ == "__main__":
         desc="cells",
     ))
 
-    all_exps = pl.DataFrame(rows)
-    all_exps = all_exps.sort(by=["b", "m"])
-    all_exps.write_parquet(DATA_FOLDER / ROBUSTNESS_SAVE_NAME)
+    all_exps_df = pl.DataFrame(rows) if rows else None
+
+    if existing_exps is not None:
+        if all_exps_df is not None:
+            all_exps_df = pl.concat([all_exps_df, existing_exps], how="vertical")
+        else:
+            all_exps_df = existing_exps
+
+    if all_exps_df is not None:
+        all_exps_df = all_exps_df.sort(by=["b", "m"])
+        all_exps_df.write_parquet(robustness_save_path)
+    else:
+        raise ValueError("No existing data and no computed results")
