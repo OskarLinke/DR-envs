@@ -1,4 +1,4 @@
-from my_typing import (
+from my_typing import ( 
     DistancesToOptimum,
     QFunction,
     VFunction,
@@ -43,13 +43,16 @@ def REVI(
     evaluations = K  
     nom_model = None
     nom_model_sa = None
+    
+    hot_mds = np.full((S, A, len(md_nom)), md_nom[0])
+    
     if learn_model:
         nom_model = empirical_nominal_kernels(env, N)
 
     # for steps k up to K apply robust bellman operator
     # update both Q_k and V_k
     for k in range(K):
-        if (k + 1) % 50 == 0: 
+        if (k + 1) % 56 == 0: 
             print(
                 f"Iteration {k} of setup with sigma: {sigma} and "
                 f"distance_metric {dist_metric}"
@@ -64,15 +67,19 @@ def REVI(
 
                 if learn_model and nom_model is not None:
                     nom_model_sa = (nom_model[0][s, a], nom_model[1][s, a])
-                inf_P, inf_r = find_inf_kernel_reward(
+                inf_P, inf_r, hot_md = find_inf_kernel_reward(
                     state=s, action=a, nom_md=md_nom,
                     sigma_p=sigma, sigma_r=sigma,
                     V=V_k, gamma=gamma,
+                    x0 = hot_mds[s,a],
                     env=env, dist_metric=dist_metric,
                     nom_model_sa=nom_model_sa if learn_model else None,
                 )
                 # Bellman operator becomes robust with inf (p,r)
                 Q_k[s, a] = _bellman_operator(inf_P, V_k, inf_r, gamma)
+
+                n = len(hot_md)
+                hot_mds[s, a] = 0.99 * hot_md + 0.01 * np.full(n, 1.0 / n)
 
         V_k = np.max(Q_k, axis=1)
         if V_dist_to_star is not None:

@@ -6,7 +6,7 @@ from scipy.stats import chi2
 
 from my_typing import ProbVector
 
-MAX_OPTIM_ITER = 150
+MAX_OPTIM_ITER = 250
 
 _KL_EPS = 1e-12
 _TV_TOL = 1e-15
@@ -55,9 +55,10 @@ def find_inf_kernel_reward(
     sigma_p: float,
     sigma_r: float,
     env,
+    x0: ProbVector,
     nom_model_sa: tuple[ProbVector, ProbVector] | None = None,
     dist_metric: str = "KL",
-) -> tuple[ProbVector, float]:
+) -> tuple[ProbVector, float, ProbVector]:
     """Worst-case (transition kernel, expected reward) over an ambiguity ball.
 
     Returns (inf_P, inf_r) achieving
@@ -89,7 +90,7 @@ def find_inf_kernel_reward(
         inf_P = worst_case_tv(nom_P, V, sigma_p)
         inf_r_dist = worst_case_tv(nom_r, r_values, sigma_r)
         inf_r = float(np.dot(inf_r_dist, r_values))
-        return inf_P, inf_r
+        return inf_P, inf_r, x0
 
     # KL / CHI_SQ: minimize over md and recover (P, r) afterwards.
     def objective(md_: ProbVector) -> float:
@@ -116,10 +117,10 @@ def find_inf_kernel_reward(
         {"type": "eq", "fun": sum_constraint},
     ]
 
-    ftol = 1e-8 if dist_metric == "KL" and sigma_p > 1 else 1e-6
+    ftol = 1e-8 if dist_metric == "KL" else 1e-6
     result = minimize(
         objective,
-        x0=nom_md,
+        x0=x0,
         constraints=constraints,
         bounds=[(0, 1) for _ in range(len(nom_md))],
         method="SLSQP",
@@ -131,7 +132,7 @@ def find_inf_kernel_reward(
     inf_md = result.x
     inf_P = env.transition_kernel_sa(state, action, inf_md)
     inf_r = float(env.expected_reward_sa(state, action, inf_md))
-    return inf_P, inf_r
+    return inf_P, inf_r, inf_md
 
 def worst_case_tv(
     p_nom: ProbVector, costs: NDArray[Any], rho: float

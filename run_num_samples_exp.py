@@ -23,7 +23,7 @@ from const import (
 )
 from supply_chain import SupplyChain
 
-
+print(NS)
 def run_one_revi(metric: str, sigma: float, V_star: NDArray[Any], N: int) -> float:
     # Each worker constructs its own env to avoid pickling overhead and shared state.
     env = SupplyChain(b=0)  # b=0 -> uniform nominal
@@ -56,21 +56,19 @@ if __name__ == "__main__":
     existing_exps_names = None
     if samples_save_path.exists():
         existing_exps = pl.read_parquet(samples_save_path)
-        existing_exps_names = existing_exps["config"].to_list()
+        existing_exps_names = []  
+        for row in existing_exps.rows(named=True): 
+            existing_exps_names.append(row["config"]+"-"+str(row["N_samples"]))
         print(f"Found existing configs: {existing_exps_names}")
 
     to_run_config_names = ["non-robust"]
     for metric in DISTANCE_METRICS:
         for sigma in SIGMAS:
-            if metric == "TV" and sigma >= 1:
-                continue
-            else:
-                to_run_config_names.append(metric + "_" + str(sigma))
-
-    assert set(to_run_config_names) == set(data["config"].to_list()), (
-        f"Missing configs. Run wants:\n{set(to_run_config_names)}\n"
-        f"Existing are:\n{set(data['config'].to_list())}"
-    )
+            for N in NS:
+                if metric == "TV" and sigma >= 1:
+                    continue
+                else:
+                    to_run_config_names.append(metric + "_" + str(sigma)+"-"+str(N)) 
 
     # Build flat (config_name, metric, sigma, V_star, num_samples, repeat_idx) task list.
     tasks: list[tuple[str, str, float, NDArray[Any], int, int]] = []
@@ -79,12 +77,13 @@ if __name__ == "__main__":
             if metric == "TV" and sigma >= 1:
                 continue
             config_name = metric + "_" + str(sigma)
-            if existing_exps_names is not None and config_name in existing_exps_names:
-                print(f"Config {config_name} already exists, skipping...")
-                continue
+            
             row = data.row(by_predicate=pl.col("config") == config_name, named=True)
             V_robust_star = np.array(row["V_star"])
             for N in NS:
+                if existing_exps_names is not None and config_name+"-"+str(N) in existing_exps_names:
+                    print(f"Config {config_name} already exists, skipping...")
+                    continue
                 for i in range(NUM_SAM_EXPERIMENTS):
                     tasks.append((config_name, metric, sigma, V_robust_star, N, i))
 
@@ -121,7 +120,6 @@ if __name__ == "__main__":
         if all_exps_df is not None:
             all_exps_df = (
                 pl.concat([all_exps_df, existing_exps], how="vertical")
-                .unique(subset="config", keep="last")
             )
         else:
             all_exps_df = existing_exps

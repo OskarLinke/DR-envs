@@ -70,20 +70,63 @@ def plot_robustness(
     plt.savefig(save_path)
     plt.clf()
 
+
+
+def plot_samples(
+        samples_df: pl.DataFrame,
+        save_path: Path,
+        y_lim: tuple[float, float] | None = None,
+        ) -> None:
+    import numpy as np
+
+    metric = samples_df["type"][0]
+    for sigma, sub in samples_df.sort("N_samples").group_by("sigma", maintain_order=True):
+        x = sub["N_samples"].to_numpy()
+        mean = sub["mean"].to_numpy()
+        std = sub["std"].to_numpy()
+        (line,) = plt.plot(x, mean, marker="x", markersize=4, alpha=0.8,
+                           label=fr"$\sigma={sigma[0]}$")
+        plt.fill_between(x, mean - std, mean + std, alpha=0.2, color=line.get_color())
+
+    plt.xscale("log")
+    if y_lim is not None:
+        plt.ylim(*y_lim)
+    plt.xlabel(r"$N_{samples}$")
+    plt.ylabel(r"$\|V_N - V^*\|$")
+    plt.title(f"Sample convergence ({metric})")
+    plt.legend()
+    plt.grid()
+    plt.savefig(save_path)
+    plt.clf()
+
+
+
 if __name__ == "__main__":
     from const import (
+        TRUE_FOLDER,
         DATA_FOLDER,
         PLOTS_FOLDER,
         STAR_SAVE_NAME,
         DISTANCE_METRICS,
+        SAMPLES_SAVE_NAME,
         ROBUSTNESS_SAVE_NAME,
         CONVERGENCE_SAVE_NAME,
     )
 
-    conv_df = pl.read_parquet(DATA_FOLDER / CONVERGENCE_SAVE_NAME)
-    rob_df = pl.read_parquet(DATA_FOLDER / ROBUSTNESS_SAVE_NAME)
-    solved_df = pl.read_parquet(DATA_FOLDER / STAR_SAVE_NAME)
+    conv_df = pl.read_parquet(TRUE_FOLDER / CONVERGENCE_SAVE_NAME)
+    rob_df = pl.read_parquet(TRUE_FOLDER / ROBUSTNESS_SAVE_NAME)
+    samples_df = pl.read_parquet(DATA_FOLDER / SAMPLES_SAVE_NAME)
+    solved_df = pl.read_parquet(TRUE_FOLDER / STAR_SAVE_NAME)
     bs = rob_df["b"].unique().to_list()
+    samples_df = samples_df.with_columns(
+          pl.col("config").str.split("_").list.first().alias("type")  # "KL", "TV", ...
+      )
+    samples_df = samples_df.with_columns(
+          pl.col("config").str.split("_").list.last().alias("sigma")  # "KL", "TV", ...
+      )
+    for prefix, sub in samples_df.group_by("type"):
+        plot_samples(samples_df=sub, save_path=PLOTS_FOLDER / f"num_samples_{sub["type"][0]}", y_lim=None)
+
 
     PLOTS_FOLDER.mkdir(parents=False, exist_ok=True)
     # Plot for all distance metric
@@ -113,3 +156,5 @@ if __name__ == "__main__":
             save_path=(PLOTS_FOLDER / f"robustness_b_{b}".replace(".", ",")),
             y_lim=y_lim,
         )
+    
+    
