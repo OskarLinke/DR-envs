@@ -75,6 +75,7 @@ def plot_robustness(
     plt.title(fr"Cost over pertubed market ask b={b} over m")
     plt.xlabel(r"Pertubed market ask $m$")
     plt.ylabel("Cost")
+    plt.xticks(range(10))
     plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0.0)
     plt.grid()
     plt.savefig(save_path, bbox_inches="tight")
