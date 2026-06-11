@@ -19,10 +19,10 @@ def _format_config_label(configs: list[str]) -> str:
     for metric, sigmas in groups.items():
         latex_metric = _METRIC_LATEX.get(metric, metric)
         if len(sigmas) == 1:
-            parts.append(fr"${latex_metric}$, $\sigma_{{{latex_metric}}}={sigmas[0]}$")
+            parts.append(fr"$\sigma_{{{latex_metric}}}={sigmas[0]}$")
         else:
             sigma_str = ",".join(sigmas)
-            parts.append(fr"${latex_metric}$, $\sigma_{{{latex_metric}}}\in\{{{sigma_str}\}}$")
+            parts.append(fr"$\sigma_{{{latex_metric}}}\in\{{{sigma_str}\}}$")
     parts.extend(plain)
     return " & ".join(parts)
 
@@ -45,12 +45,14 @@ def plot_convergence(
     for i in range(num_plots):
         x = range(len(means[i]))
         plt.plot(x, means[i], label=labels[i], alpha=0.6, marker="x", markersize=2)
-    plt.xlabel(r"Iteration $k$")
-    plt.ylabel(r"$\|V_k - V^*\|_2$")
+    plt.xlabel(r"Iteration $k$", fontsize=13)
+    plt.ylabel(r"$\|V_k - V^*\|_2$", fontsize=13)
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
     plt.yscale("log")
-    plt.legend()
+    plt.legend(fontsize=14)
     plt.grid()
-    plt.title(title)
+    plt.title(title, fontsize=16)
     plt.savefig(save_path)
     plt.clf()
 
@@ -72,11 +74,12 @@ def plot_robustness(
 
     if y_lim is not None:
         plt.ylim(*y_lim)
-    plt.title(fr"Cost over pertubed market ask b={b} over m")
-    plt.xlabel(r"Pertubed market ask $m$")
-    plt.ylabel("Cost")
-    plt.xticks(range(10))
-    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0.0)
+    plt.title(fr"Cost over pertubed market ask b={b} over m", fontsize=16)
+    plt.xlabel(r"Pertubed market ask $m$", fontsize=13)
+    plt.ylabel("Cost", fontsize=13)
+    plt.xticks(range(10), fontsize=13)
+    plt.yticks(fontsize=13)
+    plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0.0, fontsize=14)
     plt.grid()
     plt.savefig(save_path, bbox_inches="tight")
     plt.clf()
@@ -94,17 +97,19 @@ def plot_samples(
         x = sub["N_samples"].to_numpy()
         mean = sub["mean"].to_numpy()
         std = sub["std"].to_numpy()
-        (line,) = plt.plot(x, mean, marker="x", markersize=4, alpha=0.8,
+        (line,) = plt.plot(x, mean, marker="x", markersize=6, alpha=0.8,
                            label=fr"$\sigma={sigma[0]}$")
         plt.fill_between(x, mean - std, mean + std, alpha=0.2, color=line.get_color())
 
     plt.xscale("log")
     if y_lim is not None:
         plt.ylim(*y_lim)
-    plt.xlabel(r"$N_{samples}$")
-    plt.ylabel(r"$\|V_N - V^*\|$")
-    plt.title(fr"Convergence over $N$ Samples for distance metric ${_METRIC_LATEX.get(metric, metric)}$")
-    plt.legend()
+    plt.xlabel(r"$N_{samples}$", fontsize=11)
+    plt.ylabel(r"$\|\hat{V}_N - V^*\|_2$", fontsize=13)
+    plt.xticks(fontsize=13)
+    plt.yticks(fontsize=13)
+    plt.title(fr"Convergence over $N$ Samples for distance metric ${_METRIC_LATEX.get(metric, metric)}$", fontsize=16)
+    plt.legend(fontsize=14)
     plt.grid()
     plt.savefig(save_path)
     plt.clf()
