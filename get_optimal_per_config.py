@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from algos import REVI, VI
 from const import (
-    DATA_FOLDER,
+    TRUE_FOLDER,
     DISTANCE_METRICS,
     MAX_ITER_K,
     N_JOBS,
@@ -51,7 +51,7 @@ def run_non_robust() -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    save_path = DATA_FOLDER / STAR_SAVE_NAME
+    save_path = TRUE_FOLDER / STAR_SAVE_NAME
     ex_config_names = None
     existing_configs = None
     all_configs_df = None
@@ -99,7 +99,7 @@ if __name__ == "__main__":
         else:
             all_configs_df = existing_configs
 
-    DATA_FOLDER.mkdir(parents=False, exist_ok=True)
+    TRUE_FOLDER.mkdir(parents=False, exist_ok=True)
     if all_configs_df is not None:
         all_configs_df = all_configs_df.sort(by="config")
         all_configs_df.write_parquet(save_path)

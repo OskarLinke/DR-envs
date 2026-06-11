@@ -1,7 +1,7 @@
 from pathlib import Path
 
-DISTANCE_METRICS: list[str] = ["KL", "TV", "CHI_SQ"]
-SIGMAS: list[float] = [0.5, 1., 2.]
+DISTANCE_METRICS: list[str] = ["TV"]  #["KL", "TV", "CHI_SQ"]
+SIGMAS: list[float] = [0.25, 0.5, 1., 2.]
 BS: list[float] = [1., 1.5, 2., 2.5]
 MS: list[int] = [i for i in range(10)]
 T: int = 100

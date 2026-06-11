@@ -77,7 +77,6 @@ if __name__ == "__main__":
             if metric == "TV" and sigma >= 1:
                 continue
             config_name = metric + "_" + str(sigma)
-            
             row = data.row(by_predicate=pl.col("config") == config_name, named=True)
             V_robust_star = np.array(row["V_star"])
             for N in NS:
