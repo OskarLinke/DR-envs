@@ -45,8 +45,8 @@ def plot_convergence(
     for i in range(num_plots):
         x = range(len(means[i]))
         plt.plot(x, means[i], label=labels[i], alpha=0.6, marker="x", markersize=2)
-    plt.xlabel(r"Iteration $k$", fontsize=13)
-    plt.ylabel(r"$\|V_k - V^*\|_2$", fontsize=13)
+    plt.xlabel(r"Iteration $k$", fontsize=14)
+    plt.ylabel(r"$\|V_k - V^*\|_2$", fontsize=14)
     plt.xticks(fontsize=12)
     plt.yticks(fontsize=12)
     plt.yscale("log")
