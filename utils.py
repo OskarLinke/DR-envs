@@ -61,19 +61,58 @@ def find_inf_kernel_reward(
 ) -> tuple[ProbVector, float, ProbVector]:
     """Worst-case (transition kernel, expected reward) over an ambiguity ball.
 
-    Returns (inf_P, inf_r) achieving
+    Solves
+
         min  inf_r + gamma * <inf_P, V>
         s.t. d(inf_P, nom_P) <= sigma_p,  inf_P in simplex(S)
              d(inf_r_dist, nom_r_dist) <= sigma_r,  inf_r_dist in simplex(R)
-    where d is the requested ambiguity metric. nom_P and nom_r are the
-    transition kernel and reward distribution induced by nom_md.
 
-    Dispatch
-    --------
-    TV: closed-form via worst_case_tv (Iyengar 2005, Nilim & El Ghaoui 2005,
-        Ho-Petrik-Wiesemann 2018). Exact and robust.
-    KL / CHI_SQ: SLSQP minimize over the market distribution md, then map
-        the optimizer back to (P, r) via env.
+    where ``d`` is the requested ambiguity metric. ``nom_P`` and ``nom_r``
+    are the transition kernel and reward distribution induced by ``nom_md``.
+
+    Parameters
+    ----------
+    state, action : int
+        State-action pair indexing the inner problem.
+    nom_md : ProbVector
+        Nominal market-ask distribution.
+    V : ndarray
+        Current value function.
+    gamma : float
+        Discount factor.
+    sigma_p, sigma_r : float
+        Ambiguity-ball radii for the transition kernel and reward
+        distribution, respectively.
+    env :
+        Environment exposing ``transition_kernel_sa``,
+        ``reward_probabilities_sa`` and ``expected_reward_sa``.
+    x0 : ProbVector
+        Warm-start market-ask distribution for the SLSQP path.
+    nom_model_sa : tuple(ProbVector, ProbVector) or None
+        Optional precomputed ``(nom_P, nom_r)`` to skip the nominal
+        recomputation (e.g. an empirical estimate).
+    dist_metric : str, default "KL"
+        One of ``"KL"``, ``"TV"``, ``"CHI_SQ"``.
+
+    Returns
+    -------
+    inf_P : ProbVector
+        Worst-case transition kernel.
+    inf_r : float
+        Worst-case expected reward.
+    md_out : ProbVector
+        Worst-case (or warm-start, in the TV branch) market-ask
+        distribution to feed back as ``x0`` on the next call.
+
+    Notes
+    -----
+    Dispatch:
+
+    * TV: closed form via ``worst_case_tv`` (see references there).
+      Exact and robust; ``x0`` is returned unchanged.
+    * KL / CHI_SQ: SLSQP minimisation over the market distribution
+      ``md``, then the optimiser is mapped back to ``(P, r)`` through
+      ``env``.
     """
 
     if nom_model_sa is None:
@@ -140,25 +179,42 @@ def worst_case_tv(
     """Closed-form worst-case distribution over a TV ball.
 
     Solves
+
         min_p  <p, costs>
         s.t.   (1/2) * ||p - p_nom||_1 <= rho
                p in simplex.
 
-    Algorithm: water-filling. Shift probability mass from highest-cost
-    coordinate to lowest-cost coordinate, limited by the per-coordinate
-    bounds [0, 1] and the remaining transport budget rho. O(S log S).
+    Algorithm: water-filling. Shift probability mass from the
+    highest-cost coordinate to the lowest-cost coordinate, limited by
+    the per-coordinate bounds ``[0, 1]`` and the remaining transport
+    budget ``rho``. ``O(S log S)``.
 
-    Constraint satisfied by construction: total mass moved is at most rho,
-    which equals the TV distance between the returned p and p_nom.
+    Constraint satisfied by construction: total mass moved is at most
+    ``rho``, which equals the TV distance between the returned ``p`` and
+    ``p_nom``.
+
+    Parameters
+    ----------
+    p_nom : ProbVector
+        Nominal distribution.
+    costs : ndarray
+        Coordinatewise costs to minimise against.
+    rho : float
+        TV-ball radius.
+
+    Returns
+    -------
+    p : ProbVector
+        Worst-case distribution.
 
     References
     ----------
-    Iyengar (2005), "Robust Dynamic Programming", Math. Oper. Res. 30(2),
-        Section 4 (rectangular ambiguity, TV/L1 specialization).
-    Nilim & El Ghaoui (2005), "Robust Control of Markov Decision Processes
-        with Uncertain Transition Matrices", Oper. Res. 53(5).
-    Ho, Petrik, Wiesemann (2018), "Fast Bellman Updates for Robust MDPs",
-        ICML — explicit O(S log S) algorithm.
+    .. [1] Iyengar (2005), "Robust Dynamic Programming", Math. Oper. Res.
+       30(2), Section 4 (rectangular ambiguity, TV/L1 specialisation).
+    .. [2] Nilim & El Ghaoui (2005), "Robust Control of Markov Decision
+       Processes with Uncertain Transition Matrices", Oper. Res. 53(5).
+    .. [3] Ho, Petrik, Wiesemann (2018), "Fast Bellman Updates for
+       Robust MDPs", ICML -- explicit ``O(S log S)`` algorithm.
     """
     p = p_nom.astype(np.float64).copy()
     budget = float(rho)
@@ -188,7 +244,29 @@ def worst_case_tv(
 
 #### Estimate the model of the system functions
 def empirical_nominal_kernels(env, N: int):
-    # Estimate the nominal model for Supply Chain
+    """N-sample empirical estimate of ``(P_hat, r_hat)``.
+
+    For each ``(s, a)`` resets ``env`` to ``s``, takes ``a`` ``N`` times,
+    and tallies next states and reward indices. Illegal actions are
+    filled with uniform placeholders.
+
+    Parameters
+    ----------
+    env :
+        Environment exposing ``state_size``, ``action_size``,
+        ``legal_actions``, ``find_num_possible_rewards``, ``reset`` and
+        ``step``.
+    N : int
+        Samples per ``(s, a)`` pair.
+
+    Returns
+    -------
+    P_hat : ndarray, shape (S, A, S)
+        Empirical transition kernel.
+    r_hat : ndarray, shape (S, A, M)
+        Empirical reward distribution. Index ``i`` holds the empirical
+        probability of reward value ``-i``.
+    """
     S, A = env.state_size(), env.action_size()
     M = env.find_num_possible_rewards()
     running_counts = np.zeros(S)

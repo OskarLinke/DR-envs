@@ -14,24 +14,76 @@ from utils import (
 def _bellman_operator(P, V, r_val, gamma):
     return r_val + gamma*np.dot(P, V)
 
-def REVI(
+def DRVI(
     env,
     md_nom,
     sigma: float,
-    K: int, 
+    K: int,
     learn_model: bool = True,
     dist_metric: str = "KL",
-    tolerance: float = 0.05, 
+    tolerance: float = 0.05,
     N: int = 1000,
     V_star: NDArray[Any] | None = None,
 ) -> tuple[QFunction, VFunction, DistancesToOptimum | None, int]:
-    """
-    Robust Empirical Value Iteration
+    """Distributionally Robust Value Iteration.
 
-    NOTE
-    ----
-        Assumes tabular learning, thus states and actions are given as indices. 
-        Assumes deterministic rewards. 
+    Applies the robust Bellman operator to (Q_k, V_k) until either K
+    iterations elapse or the sup-norm change in Q falls below `tolerance`.
+    At each (s, a) the inner adversary is solved by `find_inf_kernel_reward`
+    over an ambiguity ball of radius `sigma` in the chosen `dist_metric`.
+
+    Follows [1]_ and [2]_, extended to reward distributions whose
+    parametrisation is coupled to the transition kernel (as in the
+    SupplyChain environment).
+
+    Parameters
+    ----------
+    env :
+        Tabular environment exposing state_size, action_size, gamma,
+        legal_actions, and the kernel/reward helpers consumed by
+        `find_inf_kernel_reward`.
+    md_nom :
+        Nominal market-ask distribution shared across all (s, a).
+    sigma : float
+        Ambiguity-ball radius. Used for both the transition kernel and
+        the reward distribution.
+    K : int
+        Maximum number of value-iteration steps.
+    learn_model : bool, default True
+        If True, replace the analytic nominal (P, r) with an N-sample
+        empirical estimate via `empirical_nominal_kernels`.
+    dist_metric : str, default "KL"
+        One of "KL", "TV", "CHI_SQ".
+    tolerance : float, default 0.05
+        Stop when ||Q_k - Q_{k-1}||_inf < tolerance.
+    N : int, default 1000
+        Sample budget used when `learn_model` is True.
+    V_star : ndarray or None
+        Optional reference V used to record ||V_k - V_star||_2 at every
+        iteration.
+
+    Returns
+    -------
+    Q_k : ndarray, shape (S, A)
+        Final action-value function. Illegal actions are masked with -inf.
+    V_k : ndarray, shape (S,)
+        Final value function.
+    V_dist_to_star : ndarray or None
+        ||V_k - V_star||_2 per iteration, truncated to the number of
+        iterations actually run. None when `V_star` is None.
+    evaluations : int
+        Number of iterations executed before exit.
+
+    Notes
+    -----
+    Assumes tabular learning; states and actions are integer indices.
+
+    References
+    ----------
+    .. [1] Panaganti, K. and Kalathil, D. (2023). Sample Complexity of
+       Robust Reinforcement Learning with a Generative Model.
+    .. [2] Shi, L. et al. (2025). Curriculum-style robust value iteration
+       for distributionally robust MDPs.
     """
 
     # Init Q_0 and V_0
@@ -98,13 +150,32 @@ def REVI(
 def VI(
     env, P, R_exp, K: int, tolerance: float = 0.05
 ) -> tuple[QFunction, VFunction, int]:
-    """
-    Value Iteration
+    """Tabular value iteration on a known model.
 
-    NOTE
-    ----
-        Assumes tabular learning, thus states and actions are given as indices. 
-        Assumes deterministic rewards. 
+    Parameters
+    ----------
+    env :
+        Tabular environment (provides state_size, action_size, gamma,
+        and the legal-action mask).
+    P : ndarray, shape (S, A, S)
+        Transition kernel.
+    R_exp : ndarray, shape (S, A)
+        Expected reward.
+    K : int
+        Maximum number of iterations.
+    tolerance : float, default 0.05
+        Stop when ||Q_k - Q_{k-1}||_inf < tolerance.
+
+    Returns
+    -------
+    Q_k : ndarray, shape (S, A)
+    V_k : ndarray, shape (S,)
+    evaluations : int
+
+    Notes
+    -----
+    States and actions are integer indices. Rewards are treated as
+    deterministic given (s, a).
     """
 
     # Init Q_0 and V_0

@@ -1,3 +1,11 @@
+"""Robustness experiment.
+
+For each solved policy (loaded from ``STAR_SAVE_NAME``) and each
+perturbation ``(b, m)`` of the market ask, roll out the policy in the
+perturbed environment for ``NUM_ROB_EXPERIMENTS`` episodes of length
+``T`` and record cost mean / std. Output: ``ROBUSTNESS_SAVE_NAME``.
+"""
+
 import numpy as np
 import polars as pl
 from joblib import Parallel, delayed

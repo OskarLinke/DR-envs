@@ -1,3 +1,14 @@
+"""Convergence experiment.
+
+For every ``(metric, sigma)`` config, run ``NUM_CONV_EXPERIMENTS``
+independent DRVI rollouts, record ``||V_k - V*||_2`` per iteration, and
+save per-config mean / std curves to ``CONVERGENCE_SAVE_NAME``. Skips
+configs already present on disk.
+
+Requires the optimal V* per config produced by
+``get_optimal_per_config.py``.
+"""
+
 from collections import defaultdict
 from time import time
 
@@ -6,7 +17,7 @@ import polars as pl
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
-from algos import REVI
+from algos import DRVI
 from const import (
     CONVERGENCE_SAVE_NAME,
     DATA_FOLDER,
@@ -21,11 +32,11 @@ from const import (
 from supply_chain import SupplyChain
 
 
-def run_one_revi(metric: str, sigma: float, V_star: np.ndarray) -> np.ndarray:
+def run_one_drvi(metric: str, sigma: float, V_star: np.ndarray) -> np.ndarray:
     # Each worker constructs its own env to avoid pickling overhead and shared state.
     env = SupplyChain(b=0)  # b=0 -> uniform nominal
     md = env.market_ask_distribution()
-    _, _, V_dists, _ = REVI(
+    _, _, V_dists, _ = DRVI(
         env=env,
         md_nom=md,
         sigma=sigma,
@@ -33,7 +44,7 @@ def run_one_revi(metric: str, sigma: float, V_star: np.ndarray) -> np.ndarray:
         K=MAX_ITER_K,
         V_star=V_star,
     )
-    assert V_dists is not None, "Must enter valid V_star to REVI"
+    assert V_dists is not None, "Must enter valid V_star to DRVI"
     return V_dists
 
 
@@ -82,14 +93,14 @@ if __name__ == "__main__":
             for n in range(NUM_CONV_EXPERIMENTS):
                 tasks.append((config_name, metric, sigma, V_robust_star, n))
 
-    # Run all REVI invocations in parallel.
+    # Run all DRVI invocations in parallel.
     results = list(tqdm(
         Parallel(n_jobs=N_JOBS, return_as="generator")(
-            delayed(run_one_revi)(metric, sigma, V_star)
+            delayed(run_one_drvi)(metric, sigma, V_star)
             for _, metric, sigma, V_star, _ in tasks
         ),
         total=len(tasks),
-        desc="REVI runs",
+        desc="DRVI runs",
     ))
 
     # Group results back by config_name.

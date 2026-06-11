@@ -1,3 +1,14 @@
+"""Sample-complexity experiment.
+
+For every ``(metric, sigma, N)`` config, run ``NUM_SAM_EXPERIMENTS``
+independent DRVI rollouts with the empirical nominal model estimated
+from ``N`` samples, record the final ``||V_K - V*||_2``, and save mean /
+std to ``SAMPLES_SAVE_NAME``. Skips configs already present on disk.
+
+Requires the optimal V* per config produced by
+``get_optimal_per_config.py``.
+"""
+
 from collections import defaultdict
 from time import time
 from typing import Any
@@ -8,7 +19,7 @@ import polars as pl
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
-from algos import REVI
+from algos import DRVI
 from const import (
     DATA_FOLDER,
     DISTANCE_METRICS,
@@ -23,12 +34,11 @@ from const import (
 )
 from supply_chain import SupplyChain
 
-print(NS)
-def run_one_revi(metric: str, sigma: float, V_star: NDArray[Any], N: int) -> float:
+def run_one_drvi(metric: str, sigma: float, V_star: NDArray[Any], N: int) -> float:
     # Each worker constructs its own env to avoid pickling overhead and shared state.
     env = SupplyChain(b=0)  # b=0 -> uniform nominal
     md = env.market_ask_distribution()
-    _, _, V_dists, _ = REVI(
+    _, _, V_dists, _ = DRVI(
         env=env,
         md_nom=md,
         sigma=sigma,
@@ -38,7 +48,7 @@ def run_one_revi(metric: str, sigma: float, V_star: NDArray[Any], N: int) -> flo
         V_star=V_star,
         N=N,
     )
-    assert V_dists is not None, "Must enter valid V_star to REVI"
+    assert V_dists is not None, "Must enter valid V_star to DRVI"
     return V_dists[-1]
 
 
@@ -86,14 +96,14 @@ if __name__ == "__main__":
                 for i in range(NUM_SAM_EXPERIMENTS):
                     tasks.append((config_name, metric, sigma, V_robust_star, N, i))
 
-    # Run all REVI invocations in parallel.
+    # Run all DRVI invocations in parallel.
     results = list(tqdm(
         Parallel(n_jobs=N_JOBS, return_as="generator")(
-            delayed(run_one_revi)(metric, sigma, V_star, N)
+            delayed(run_one_drvi)(metric, sigma, V_star, N)
             for _, metric, sigma, V_star, N, _ in tasks
         ),
         total=len(tasks),
-        desc="REVI runs",
+        desc="DRVI runs",
     ))
 
     # Group results back by config_name.

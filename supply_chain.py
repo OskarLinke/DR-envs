@@ -4,11 +4,18 @@ from typing import Any
 from my_typing import ProbVector
 
 
-class SupplyChain: 
-    """ 
-    Class of the supply chain environment. Described in Liu et al (2022):
-    https://proceedings.mlr.press/v162/liu22a/liu22a.pdf
-    """ 
+class SupplyChain:
+    """Supply-chain inventory environment from Liu et al. (2022).
+
+    State is the current inventory level in [0, n]. Each step the agent
+    orders `a` units; demand `dt` is drawn from a (possibly perturbed)
+    market-ask distribution; cost combines shipping (if a > 0), holding,
+    and lost-sales penalties.
+
+    References
+    ----------
+    .. [1] Liu, Z. et al. (2022). https://proceedings.mlr.press/v162/liu22a/liu22a.pdf
+    """
     def __init__(
         self,
         n: int = 10,
@@ -19,20 +26,26 @@ class SupplyChain:
         b: float = 0.0,
         m: int = 5,
     ) -> None:
-        """
-        Initializes the environment.
+        """Initialise the environment.
 
-        Args:
-            n: Amount of goods we can buy. Defines both action and state space.
-            h: Holding cost weight.
-            l: Lost sales cost weight.
-            k: Shipping cost weight.
-            gamma: Discount factor.
-            t: Current time step.
-            S: Current state of the environment. Amount of goods in stock.
-            b: Extra weight for outcomes m and m+1 (0.0 = uniform distribution).
-            m: Which value to make more likely. Must be in [0, n-1].
-            dt: Current market ask (pertubations), gets updated each step.
+        Parameters
+        ----------
+        n : int, default 10
+            Maximum order size; also sets state and action space cardinality.
+        h : int, default 1
+            Holding cost weight.
+        l : int, default 2
+            Lost-sales cost weight.
+        k : int, default 3
+            Shipping cost weight (charged when a > 0).
+        gamma : float, default 0.9
+            Discount factor.
+        b : float, default 0.0
+            Extra weight placed on market-ask outcomes m and m+1.
+            b = 0 yields a uniform distribution.
+        m : int, default 5
+            Index of the market-ask outcome to up-weight. Must lie in
+            [0, n-1].
         """
         self.n = n
         self.h = h
@@ -47,7 +60,11 @@ class SupplyChain:
         self.dt: int = 0
 
     def reward(self, s: int, a: int) -> int:
-        """Calculates the reward"""
+        """Compute the (non-positive) reward at inventory `s`, order `a`.
+
+        Uses the current market ask `self.dt` to determine holding vs
+        lost-sales costs.
+        """
         cost = self.k if a > 0 else 0
         holding_cost = self.h*(s + a - self.dt)
         lost_sales_cost = self.l*(self.dt - s - a)
@@ -59,17 +76,16 @@ class SupplyChain:
 
 
     def market_ask(self) -> int:
-        """
-        The amount of goods requested by the market. A perturbed normal
-        distribution. When b = 0, it is a regular uniform distribution. 
+        """Sample the demand for the current step.
+
+        Draw from the market-ask distribution (uniform when ``b = 0``,
+        otherwise extra mass on indices m and m+1).
         """
         probs = self.market_ask_distribution()        
         return np.random.choice(np.arange(self.n + 1),  p=probs)
 
     def market_ask_distribution(self) -> NDArray[Any]:
-        """
-        The distribution of market ask probabilities
-        """
+        """Return the (length-``n+1``) market-ask probability vector."""
         fill_val = (self.n - 1 - 2*self.b)/(np.square(self.n) - 1)  # (n-1-2b)/(sqr(n)-1)
         probs = np.full(self.n + 1, fill_val)                       # n+1 long vector
         probs[self.m] = (self.b + 1)/(self.n + 1)                   # at m and m + 1 get higher prob
@@ -77,9 +93,18 @@ class SupplyChain:
         return probs
 
 
-    def step(self, a: int, verbose: bool = False) -> tuple[int, float]: 
-        """
-        Takes a step in the environment given an action. 
+    def step(self, a: int, verbose: bool = False) -> tuple[int, float]:
+        """Advance the environment by one step.
+
+        Samples a market ask, returns the discounted reward, and updates
+        the inventory state (clipped at zero).
+
+        Returns
+        -------
+        s_next : int
+            New inventory level.
+        reward : float
+            Discounted reward for this step.
         """
         self.dt = self.market_ask() 
         reward = (self.gamma**self.t) * self.reward(self.s, a)
@@ -94,38 +119,33 @@ class SupplyChain:
             print(f"New state is {self.s}")
         return (self.s, reward)
 
-    def legal_actions(self) -> int: 
-        """
-        Returns all legal actions as size of action space. The agent cannot 
-        posses more than n goods at any time, i.e. more than self.n - self.s
+    def legal_actions(self) -> int:
+        """Return the largest legal order at the current state.
+
+        Inventory is capped at ``n``, so the maximum order is
+        ``self.n - self.s``.
         """
         return self.n - self.s
 
     def action_size(self) -> int:
-        """
-        Size of the action space (total num possible actions)
-        """
+        """Cardinality of the action space."""
         return self.n + 1
 
     def state_size(self) -> int:
-        """
-        Size of the state space (total num possible states)
-        """
+        """Cardinality of the state space."""
         return self.n + 1
 
-    def reset(self, s: int = 0) -> None: 
-        """
-        Resets the environment. 
-        """
+    def reset(self, s: int = 0) -> None:
+        """Reset time to zero and inventory to ``s``."""
         self.t = 0 
         self.s = s 
 
     
     ### Get nominal Distributions #############################################
     def nominal_expected_reward(self) -> NDArray[Any]:
-        """
-        Get the expected reward for each state and action.
-        Only implemented for uniform market ask (b=0)
+        """Expected reward ``R(s, a)`` under the nominal market ask.
+
+        Only implemented for the uniform case (``b = 0``).
         """
         R_exp = np.zeros((self.state_size(), self.action_size()))
         for s in range(self.state_size()):
@@ -137,10 +157,15 @@ class SupplyChain:
 
         return R_exp
 
-    def nominal_kernel(self) -> NDArray[Any]: 
-        """
-        Get the true nominal kernel for each state and action.
-        Only implemented for uniform market ask (b=0)
+    def nominal_kernel(self) -> NDArray[Any]:
+        """Analytic transition kernel ``P(s, a, s')`` under uniform market ask.
+
+        Only implemented for ``b = 0``.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``self.b != 0``.
         """
         if self.b != 0: 
             raise NotImplementedError(
@@ -166,10 +191,7 @@ class SupplyChain:
     def expected_reward_sa(
         self, s: int, a: int, market_ask_dist: ProbVector
     ) -> float:
-        """ 
-        Get the expected reward for a single state-action pair 
-        given some market ask distribution 
-        """
+        """Expected reward at ``(s, a)`` under the given market-ask distribution."""
         old_dt = self.dt
         exp_r = 0
         for n in range(self.n + 1):
@@ -183,6 +205,13 @@ class SupplyChain:
     def transition_kernel_sa(
         self, s: int, a: int, market_ask_dist: ProbVector
     ) -> ProbVector:
+        """Next-state distribution at ``(s, a)`` under the given market-ask distribution.
+
+        Raises
+        ------
+        ValueError
+            If ``s + a > self.n`` (illegal action).
+        """
         if s + a > self.n:
             raise ValueError("Illegal action taken. s + a must be less than self.n")
 
@@ -195,7 +224,12 @@ class SupplyChain:
         return P_
 
     def find_num_possible_rewards(self) -> int:
-        """Helper function which gets the total count of possible rewards"""
+        """Upper bound on the number of distinct reward values.
+
+        Returns ``|worst_case_reward| + 1`` so that every reward value
+        ``-r`` indexes into a length-this array. The worst case depends
+        on which cost weight dominates.
+        """
         old_dt = self.dt
         r = None
         # If k dominates
@@ -228,6 +262,11 @@ class SupplyChain:
     def reward_probabilities_sa(
         self, s: int, a: int, market_ask_dist: ProbVector
     ) -> ProbVector:
+        """Reward distribution at ``(s, a)`` under the given market-ask distribution.
+
+        Position ``i`` of the returned vector holds the probability mass
+        for reward value ``-i`` (rewards are non-positive).
+        """
         R = self.find_num_possible_rewards()
         r_probs = np.zeros(R)
 

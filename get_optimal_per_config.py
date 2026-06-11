@@ -1,3 +1,11 @@
+"""Compute the optimal ``(Q*, V*, Pi*)`` per ambiguity config.
+
+Runs DRVI for every ``(metric, sigma)`` pair plus VI for the non-robust
+baseline, saves the result to ``STAR_SAVE_NAME``. Skips configs already
+present on disk. Used as the reference solution by the convergence and
+sample-complexity experiments.
+"""
+
 from time import time
 from typing import Any
 
@@ -6,7 +14,7 @@ import polars as pl
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
-from algos import REVI, VI
+from algos import DRVI, VI
 from const import (
     TRUE_FOLDER,
     DISTANCE_METRICS,
@@ -18,10 +26,10 @@ from const import (
 from supply_chain import SupplyChain
 
 
-def run_revi_config(sigma: float, dm: str) -> dict:
+def run_drvi_config(sigma: float, dm: str) -> dict:
     env = SupplyChain(b=0)
     nom_md = env.market_ask_distribution()
-    Q_K, V_K, _, evals = REVI(
+    Q_K, V_K, _, evals = DRVI(
         env=env, md_nom=nom_md, sigma=sigma,
         K=MAX_ITER_K, V_star=None, dist_metric=dm,
     )
@@ -69,7 +77,7 @@ if __name__ == "__main__":
         for dm in DISTANCE_METRICS:
             config_name = dm + "_" + str(sigma)
             if ex_config_names is None or config_name not in ex_config_names:
-                jobs.append(delayed(run_revi_config)(sigma, dm))
+                jobs.append(delayed(run_drvi_config)(sigma, dm))
             else:
                 print(f"Config {config_name} already exists, skipping...")
 
