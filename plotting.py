@@ -34,6 +34,7 @@ def plot_convergence(
 ) -> None:
     title = fr"Convergence over steps $k$ of DRVI by ${_METRIC_LATEX.get(dist_metric, dist_metric)}$ norm error"
     # Filter for dist metric
+    breakpoint()
     convergence_df = convergence_df.filter(pl.col("config").str.contains(dist_metric))
     labels = (
         convergence_df["config"]
@@ -128,7 +129,9 @@ if __name__ == "__main__":
         CONVERGENCE_SAVE_NAME,
     )
 
-    conv_df = pl.read_parquet(TRUE_FOLDER / CONVERGENCE_SAVE_NAME)
+    # Make the folder andd load in data
+    PLOTS_FOLDER.mkdir(parents=False, exist_ok=True)
+    conv_df = pl.read_parquet(DATA_FOLDER / CONVERGENCE_SAVE_NAME)
     rob_df = pl.read_parquet(TRUE_FOLDER / ROBUSTNESS_SAVE_NAME)
     samples_df = pl.read_parquet(DATA_FOLDER / SAMPLES_SAVE_NAME)
     solved_df = pl.read_parquet(TRUE_FOLDER / STAR_SAVE_NAME)
@@ -144,7 +147,6 @@ if __name__ == "__main__":
         plot_samples(samples_df=sub, save_path=save_path, y_lim=None)
 
 
-    PLOTS_FOLDER.mkdir(parents=False, exist_ok=True)
     # Plot for all distance metric
     for metric in DISTANCE_METRICS:
         plot_convergence(

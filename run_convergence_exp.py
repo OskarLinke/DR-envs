@@ -73,9 +73,10 @@ if __name__ == "__main__":
             else:
                 to_run_config_names.append(metric + "_" + str(sigma))
 
-    assert set(to_run_config_names) == set(data["config"].to_list()), (
+    assert set(to_run_config_names).issubset(set(data["config"].to_list())), (
         f"Missing configs. Run wants:\n{set(to_run_config_names)}\n"
-        f"Existing are:\n{set(data['config'].to_list())}"
+        f"Existing are:\n{set(data['config'].to_list())}\n"
+        f"Missing: {set(to_run_config_names) - set(data['config'].to_list())}"
     )
 
     # Build flat (config_name, metric, sigma, V_star, repeat_idx) task list.
@@ -113,9 +114,9 @@ if __name__ == "__main__":
         arr = np.array(V_dists_list)
         rows.append({
             "config": config_name,
-            "convergence": arr,
-            "means": arr.mean(axis=0),
-            "stds": arr.std(axis=0),
+            "convergence": arr.tolist(),
+            "means": arr.mean(axis=0).tolist(),
+            "stds": arr.std(axis=0).tolist(),
         })
 
     all_exps_df = pl.DataFrame(rows) if rows else None
