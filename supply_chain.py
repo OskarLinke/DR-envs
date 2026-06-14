@@ -74,7 +74,6 @@ class SupplyChain:
 
         return -cost
 
-
     def market_ask(self) -> int:
         """Sample the demand for the current step.
 
@@ -91,7 +90,6 @@ class SupplyChain:
         probs[self.m] = (self.b + 1)/(self.n + 1)                   # at m and m + 1 get higher prob
         probs[self.m + 1] = probs[self.m]
         return probs
-
 
     def step(self, a: int, verbose: bool = False) -> tuple[int, float]:
         """Advance the environment by one step.
@@ -139,7 +137,6 @@ class SupplyChain:
         """Reset time to zero and inventory to ``s``."""
         self.t = 0 
         self.s = s 
-
     
     ### Get nominal Distributions #############################################
     def nominal_expected_reward(self) -> NDArray[Any]:
@@ -280,16 +277,3 @@ class SupplyChain:
         self.dt = old_dt
 
         return r_probs
-
-
-if __name__ == "__main__": 
-    def random_action(env: SupplyChain): 
-        """
-        Takes a random action from the set of allowed actions. 
-        """
-        return np.random.randint(env.legal_actions())
-
-    env = SupplyChain(m = 5, b = 2)
-    
-    market_dist = env.market_ask_distribution()
-    print(f"Transition probability function from s = 0, a = 1: {env.transition_kernel_sa(0, 1, market_dist)}")
